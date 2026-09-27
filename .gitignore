@@ -1,0 +1,23 @@
+# Env
+.env
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# Gradle / Java
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.log
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# OS
+.DS_Store
+Thumbs.db
