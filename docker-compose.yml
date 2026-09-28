@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      - "5433:5432"   # 로컬에 설치된 PostgreSQL(5432)과 충돌 방지
     volumes:
       - pgdata:/var/lib/postgresql/data
 
