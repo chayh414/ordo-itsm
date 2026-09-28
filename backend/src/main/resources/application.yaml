@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: itsm
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/${POSTGRES_DB:ordo}
+    username: ${POSTGRES_USER:ordo}
+    password: ${POSTGRES_PASSWORD:change-me}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate      # 테이블 생성은 Flyway가 담당, JPA는 검증만
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Seoul
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.flywaydb: info
