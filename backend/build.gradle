@@ -43,3 +43,17 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// 루트의 .env 파일을 bootRun 환경변수로 로드 (API 키 등)
+tasks.named('bootRun') {
+	def envFile = file('../.env')
+	if (envFile.exists()) {
+		envFile.readLines().each { line ->
+			line = line.trim()
+			if (line && !line.startsWith('#') && line.contains('=')) {
+				def (key, value) = line.split('=', 2)
+				environment key.trim(), value.trim()
+			}
+		}
+	}
+}

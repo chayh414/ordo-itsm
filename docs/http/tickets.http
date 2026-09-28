@@ -1,0 +1,39 @@
+### 1) A대학교 요청자 로그인
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{ "email": "requester@a-univ.demo", "password": "Password123!" }
+
+> {% client.global.set("tokenA", response.body.accessToken); %}
+
+### 2) 티켓 등록
+POST http://localhost:8080/api/tickets
+Authorization: Bearer {{tokenA}}
+Content-Type: application/json
+
+{
+  "subject": "학생 포털 DB 컬럼 추가",
+  "originalRequest": "오늘 23시에 운영 DB 학생 포털 테이블에 컬럼을 추가하려고 합니다. 테스트는 했지만 롤백 절차는 아직 정리하지 못했습니다."
+}
+
+> {% client.global.set("ticketId", response.body.id); %}
+
+### 3) 내 고객사 티켓 목록
+GET http://localhost:8080/api/tickets
+Authorization: Bearer {{tokenA}}
+
+### 4) 티켓 상세
+GET http://localhost:8080/api/tickets/{{ticketId}}
+Authorization: Bearer {{tokenA}}
+
+### 5) B은행 요청자 로그인
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{ "email": "requester@b-bank.demo", "password": "Password123!" }
+
+> {% client.global.set("tokenB", response.body.accessToken); %}
+
+### 6) B은행이 A대학교 티켓 조회 → 403
+GET http://localhost:8080/api/tickets/{{ticketId}}
+Authorization: Bearer {{tokenB}}
