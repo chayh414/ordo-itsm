@@ -42,6 +42,9 @@ function Show-Triage([string]$title, [string]$subject, [string]$text) {
         Write-Host "  환경/서비스: $($x.environment) / $($x.affectedService)   작업시각: $($x.requestedTime)"
         Write-Host "  위험 요인 : $($x.riskFactors -join ', ')" -ForegroundColor Yellow
         foreach ($e in $x.evidence) { Write-Host "      근거 [$($e.factor)] `"$($e.quote)`"" -ForegroundColor DarkYellow }
+        if ($x.corrections) {
+            foreach ($c in $x.corrections) { Write-Host "  보정      : $c" -ForegroundColor Cyan }
+        }
         Write-Host "  누락 정보 : $($x.missingFields -join ', ')" -ForegroundColor Magenta
         foreach ($q in $x.clarifyingQuestions) { Write-Host "      Q. $q" -ForegroundColor Magenta }
     } else {

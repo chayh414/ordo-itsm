@@ -8,6 +8,7 @@ import com.ordo.itsm.global.security.AuthUser;
 import com.ordo.itsm.sla.TicketSla;
 import com.ordo.itsm.sla.TicketSlaRepository;
 import com.ordo.itsm.tenant.TenantAccessService;
+import com.ordo.itsm.ticket.RequestType;
 import com.ordo.itsm.ticket.Ticket;
 import com.ordo.itsm.ticket.TicketRepository;
 import com.ordo.itsm.ticket.TicketStatus;
@@ -23,6 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -59,7 +61,7 @@ public class TriageService {
         TriageResult result;
         try {
             TriageOutcome outcome = engine.analyze(masked);
-            result = validator.validate(outcome.result());
+            result = validator.validate(outcome.result(), masked);
         } catch (TriageEngineException e) {
             return recordFailure(user, ticket, attemptNo, e);
         }
@@ -77,6 +79,7 @@ public class TriageService {
         after.put("missingFields", result.missingFields());
         after.put("riskFactors", result.riskFactors());
         after.put("confidence", result.confidence());
+        after.put("corrections", result.corrections() == null ? List.of() : result.corrections());
         after.put("ticketStatus", ticket.getStatus().name());
         auditLogService.record(AuditAction.AI_TRIAGED, user, ticket.getTenant().getId(), ticket.getId(), null, after);
 
@@ -109,6 +112,10 @@ public class TriageService {
         ticket.applyTriage(result.requestType(), result.category(), result.environment(), result.affectedService());
 
         if (result.missingFields().isEmpty()) {
+            return false;
+        }
+        // 장애(INCIDENT)는 누락 정보가 있어도 상태·SLA를 유지한다 (운영 대응 지연 방지).
+        if (result.requestType() == RequestType.INCIDENT) {
             return false;
         }
 

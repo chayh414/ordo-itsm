@@ -24,7 +24,9 @@ public record TriageResult(
         List<String> riskFactors,
         List<Evidence> evidence,
         List<String> clarifyingQuestions,
-        Double confidence
+        Double confidence,
+        /** 서버 보정 내역. 엔진은 채우지 않고 TriageValidator가 채운다. [FIX] = AI 오류 교정, [FILL] = 규칙 기반 누락 보완. */
+        List<String> corrections
 ) {
     /** 위험 요인별 원문 근거 */
     public record Evidence(String factor, String quote) {

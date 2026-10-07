@@ -37,7 +37,9 @@ logging:
     org.flywaydb: info
 
 llm:
-  provider: gemini
+  provider: ${LLM_PROVIDER:openai-compatible}
+  base-url: ${LLM_BASE_URL:http://localhost:11434/v1}
   api-key: ${LLM_API_KEY:}
-  model: gemini-2.5-flash-lite
-  timeout-seconds: 20
+  model: "${LLM_MODEL:qwen2.5:7b}"
+  response-format: ${LLM_RESPONSE_FORMAT:json_schema}
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:20}

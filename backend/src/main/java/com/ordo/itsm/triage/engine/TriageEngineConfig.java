@@ -12,15 +12,36 @@ public class TriageEngineConfig {
 
     @Bean
     public TriageEngine triageEngine(JsonMapper jsonMapper,
-                                     @Value("${llm.provider:gemini}") String provider,
+                                     @Value("${llm.provider:openai-compatible}") String provider,
+                                     @Value("${llm.base-url:http://localhost:11434/v1}") String baseUrl,
                                      @Value("${llm.api-key:}") String apiKey,
-                                     @Value("${llm.model:gemini-2.5-flash-lite}") String model,
+                                     @Value("${llm.model:}") String model,
+                                     @Value("${llm.response-format:json_schema}") String responseFormat,
                                      @Value("${llm.timeout-seconds:20}") int timeoutSeconds) {
-        if ("gemini".equalsIgnoreCase(provider) && !apiKey.isBlank()) {
-            log.info("[Triage] Gemini 엔진 사용 (model={})", model);
-            return new GeminiTriageEngine(jsonMapper, apiKey, model, timeoutSeconds);
-        }
-        log.warn("[Triage] LLM 키가 없거나 provider={} → 규칙 기반 엔진 사용", provider);
-        return new KeywordTriageEngine(jsonMapper);
+        String key = provider == null ? "" : provider.trim().toLowerCase();
+        return switch (key) {
+            case "openai-compatible" -> {
+                log.info("[Triage] OpenAI-compat 엔진 사용 (base={}, model={}, response_format={})",
+                        baseUrl, model, responseFormat);
+                yield new OpenAiCompatibleTriageEngine(
+                        jsonMapper, baseUrl, apiKey, model, responseFormat, timeoutSeconds);
+            }
+            case "gemini" -> {
+                if (apiKey == null || apiKey.isBlank()) {
+                    log.warn("[Triage] provider=gemini 지만 API 키가 없음 → 규칙 기반 엔진 사용");
+                    yield new KeywordTriageEngine(jsonMapper);
+                }
+                log.info("[Triage] Gemini 엔진 사용 (model={})", model);
+                yield new GeminiTriageEngine(jsonMapper, apiKey, model, timeoutSeconds);
+            }
+            case "keyword" -> {
+                log.info("[Triage] 규칙 기반(keyword) 엔진 사용");
+                yield new KeywordTriageEngine(jsonMapper);
+            }
+            default -> {
+                log.warn("[Triage] 알 수 없는 llm.provider='{}' → 규칙 기반 엔진 사용", provider);
+                yield new KeywordTriageEngine(jsonMapper);
+            }
+        };
     }
 }

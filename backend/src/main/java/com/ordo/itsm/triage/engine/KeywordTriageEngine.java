@@ -124,7 +124,8 @@ public class KeywordTriageEngine implements TriageEngine {
                 testProvided, rollbackProvided,
                 missing, factors, evidence,
                 List.of(),   // 질문은 서버 검증 단계에서 누락 항목 기준으로 생성
-                0.6          // 규칙 기반이므로 낮은 확신도 → 운영 담당자 검토 필요
+                0.6,         // 규칙 기반이므로 낮은 확신도 → 운영 담당자 검토 필요
+                null         // corrections — TriageValidator가 채운다
         );
         return new TriageOutcome(jsonMapper.writeValueAsString(result), result);
     }

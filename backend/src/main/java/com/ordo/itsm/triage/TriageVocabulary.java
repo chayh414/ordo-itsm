@@ -1,5 +1,7 @@
 package com.ordo.itsm.triage;
 
+import com.ordo.itsm.ticket.RequestType;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -8,6 +10,26 @@ import java.util.Map;
 public final class TriageVocabulary {
 
     private TriageVocabulary() {
+    }
+
+    /** 유형별 필수 항목 (INCIDENT 전용 — CHANGE/REQUEST는 카테고리 기준) */
+    public static final Map<RequestType, List<String>> REQUIRED_BY_TYPE = Map.of(
+            RequestType.INCIDENT, List.of("affectedService", "occurredAt", "impactScope", "errorMessage")
+    );
+
+    /** 분류별 필수 항목. TriageValidator가 결과·원문에 근거가 없는 항목만 missingFields에 추가한다. */
+    public static final Map<String, List<String>> REQUIRED_BY_CATEGORY;
+
+    static {
+        Map<String, List<String>> req = new LinkedHashMap<>();
+        req.put("FIREWALL", List.of("sourceIp", "destinationIp", "port", "protocol", "scheduledTime", "reason"));
+        req.put("NETWORK", List.of("sourceIp", "destinationIp", "port", "protocol", "scheduledTime", "reason"));
+        req.put("DATABASE_SCHEMA", List.of("targetDatabase", "changeDescription", "environment",
+                "affectedService", "testPlan", "rollbackPlan", "scheduledTime"));
+        req.put("DATABASE_PERMISSION", List.of("targetDatabase", "requiredPermission", "scheduledTime", "reason"));
+        req.put("DATABASE_PATCH", List.of("targetDatabase", "scheduledTime", "rollbackPlan", "testPlan"));
+        req.put("ACCOUNT", List.of("targetSystem", "targetAccount", "requiredPermission", "reason", "usagePeriod"));
+        REQUIRED_BY_CATEGORY = Map.copyOf(req);
     }
 
     public static final List<String> CATEGORIES = List.of(
