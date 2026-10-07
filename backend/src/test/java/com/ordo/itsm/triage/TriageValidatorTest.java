@@ -355,6 +355,140 @@ class TriageValidatorTest {
                 "엔진이 보낸 corrections 항목이 섞여 있으면 안 됨");
     }
 
+    @Test
+    @DisplayName("T13: 대표 시연 문장 — AI가 night_work·database_schema_change 빠뜨리고 test_plan_missing 넣어도 최종 factors는 수렴")
+    void demoSentence_convergesToStableFactors() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "DATABASE_SCHEMA", EnvironmentType.PRODUCTION,
+                "23:00", Priority.P2, "DB_OPERATION",
+                "학생 포털 테이블", true, false,
+                List.of("rollbackPlan"),
+                List.of("production_environment", "test_plan_missing", "rollback_plan_missing"),
+                List.of(),
+                0.75);
+        String raw = "오늘 23시에 운영 DB 학생 포털 테이블에 컬럼을 추가하려고 합니다. 테스트는 했지만 롤백 절차는 아직 정리하지 못했습니다.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertEquals(
+                new java.util.LinkedHashSet<>(List.of(
+                        "production_environment", "database_schema_change",
+                        "rollback_plan_missing", "night_work")),
+                new java.util.LinkedHashSet<>(out.riskFactors()),
+                "대표 시연 문장의 최종 factors는 AI 흔들림과 무관하게 정확히 이 4개로 수렴");
+        assertEquals(List.of("rollbackPlan"), out.missingFields());
+        assertEquals("23:00", out.requestedTime(), "AI 23:00이 확정 시각 {23}에 일치 → 유지");
+        assertTrue(out.confidence() < 0.7);
+    }
+
+    @Test
+    @DisplayName("T14: '내일 2시' 모호 시각 — AI 14:00 유지, night_work 없음")
+    void ambiguousBareHour_matchesPmCandidate_noNight() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "DATABASE_SCHEMA", EnvironmentType.PRODUCTION,
+                "14:00", Priority.P2, "DB_OPERATION",
+                "users 테이블", true, true,
+                List.of(),
+                List.of("database_schema_change", "production_environment"),
+                List.of(),
+                0.9);
+        String raw = "내일 2시에 운영 DB users 테이블 인덱스 추가합니다. 테스트 완료, 롤백 스크립트 준비했습니다.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertEquals("14:00", out.requestedTime(), "AI 14가 모호 후보 {2,14}에 포함 → 유지");
+        assertFalse(out.riskFactors().contains("night_work"),
+                "모호한 시각은 야간 근거로 쓰지 않음 → night_work 없음");
+        assertTrue(out.corrections().stream().noneMatch(c -> c.contains("night_work")),
+                "night_work 보정 없음");
+    }
+
+    @Test
+    @DisplayName("T15: '새벽 2시' 확정 시각 — AI 02:00 유지, night_work 추가")
+    void confirmedEarlyMorning_addsNightWork() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "DATABASE_SCHEMA", EnvironmentType.PRODUCTION,
+                "02:00", Priority.P2, "DB_OPERATION",
+                "운영 DB", true, true,
+                List.of(),
+                List.of("database_schema_change", "production_environment"),
+                List.of(),
+                0.9);
+        String raw = "새벽 2시에 운영 DB 작업합니다.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertEquals("02:00", out.requestedTime(), "'새벽 2시' → 확정 {2}, AI 2 매치 → 유지");
+        assertTrue(out.riskFactors().contains("night_work"),
+                "'새벽' NIGHT_WORDS + 확정 2시 야간대 → night_work 추가");
+        assertCorrectionsContain(out, "[FIX]", "night_work", "심야");
+    }
+
+    @Test
+    @DisplayName("T16: '오후 11시' 확정 시각 — AI 23:00 유지, night_work 추가")
+    void confirmedPmHour_addsNightWork() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "FIREWALL", EnvironmentType.PRODUCTION,
+                "23:00", Priority.P2, "NETWORK_SECURITY",
+                null, null, null,
+                List.of("sourceIp", "destinationIp", "port"),
+                List.of("firewall_change", "production_environment"),
+                List.of(),
+                0.8);
+        String raw = "오후 11시에 방화벽 작업";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertEquals("23:00", out.requestedTime(), "'오후 11시' → 확정 {23}, AI 23 매치 → 유지");
+        assertTrue(out.riskFactors().contains("night_work"),
+                "확정 23시(야간대) → night_work 추가");
+        assertCorrectionsContain(out, "[FIX]", "night_work", "심야");
+    }
+
+    @Test
+    @DisplayName("T17: '밤 2시' → 새벽대 02시로 해석. AI 02:00 유지, 14:00으로 교정되면 안 됨, night_work 있음")
+    void bam_hour1To5_isEarlyMorning() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "DATABASE_SCHEMA", EnvironmentType.PRODUCTION,
+                "02:00", Priority.P2, "DB_OPERATION",
+                "운영 DB", true, true,
+                List.of(),
+                List.of("database_schema_change", "production_environment"),
+                List.of(),
+                0.9);
+        String raw = "밤 2시에 운영 DB 작업합니다.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertEquals("02:00", out.requestedTime(),
+                "'밤 2시'는 새벽 02시로 확정 → AI 02:00 매치, 14:00으로 교정 금지");
+        assertTrue(out.riskFactors().contains("night_work"),
+                "'밤' NIGHT_WORDS + 확정 2시 야간대 → night_work 추가");
+        assertTrue(out.corrections().stream().noneMatch(c -> c.contains("requestedTime:")),
+                "requestedTime 교정 로그 없음");
+    }
+
+    @Test
+    @DisplayName("T18: '밤 12시' → 자정 00시. AI 00:00 유지, night_work 있음")
+    void bam_12_isMidnight() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "FIREWALL", EnvironmentType.PRODUCTION,
+                "00:00", Priority.P2, "NETWORK_SECURITY",
+                null, null, null,
+                List.of("sourceIp", "destinationIp", "port"),
+                List.of("firewall_change", "production_environment"),
+                List.of(),
+                0.8);
+        String raw = "밤 12시에 방화벽 작업";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertEquals("00:00", out.requestedTime(),
+                "'밤 12시'는 자정 00시로 확정 → AI 00:00 매치");
+        assertTrue(out.riskFactors().contains("night_work"),
+                "자정은 야간대 + '밤' NIGHT_WORDS → night_work 추가");
+    }
+
     // --- helpers ---
 
     private static TriageResult aiResult(RequestType type, String category, EnvironmentType env,

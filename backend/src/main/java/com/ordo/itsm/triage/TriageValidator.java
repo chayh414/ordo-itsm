@@ -46,9 +46,9 @@ public class TriageValidator {
 
     // --- 패턴 ---
     private static final Pattern HHMM = Pattern.compile("(\\d{1,2}):(\\d{2})");
-    /** "N시" — 뒤에 "간"이 붙으면(시간, 시간대) 매치 제외. 선택 접두 오전/오후/AM/PM 포함. */
+    /** "N시" — 뒤에 "간"이 붙으면(시간, 시간대) 매치 제외. 선택 수식어: 오전/오후/새벽/아침/저녁/밤/AM/PM. */
     private static final Pattern HOUR_WORD = Pattern.compile(
-            "(오전|오후|AM|PM|am|pm)?\\s*(\\d{1,2})\\s*시(?!간)");
+            "(오전|오후|새벽|아침|저녁|밤|AM|PM|am|pm)?\\s*(\\d{1,2})\\s*시(?!간)");
     private static final Pattern NIGHT_WORDS = Pattern.compile("심야|새벽|야간|밤");
     private static final Pattern IP_PATTERN = Pattern.compile("\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b");
     private static final Pattern PORT_PATTERN = Pattern.compile("\\d{2,5}\\s?(?:번\\s?)?포트|포트\\s?\\d{2,5}|:\\d{2,5}");
@@ -98,28 +98,53 @@ public class TriageValidator {
             corrections.add("[FIX] riskFactor+production_environment (CHANGE+PRODUCTION)");
         }
 
-        // 3) Rule 2 — 시각 환각 차단/교정
-        List<Integer> textHours = extractHours(text);
+        // 3) Rule 2 — 시각 환각 차단/교정 (모호한 수식어 없는 1~11시는 두 후보로 처리)
+        List<HourExpr> hourExprs = extractHourExprs(text);
         String requestedTime = r.requestedTime();
         if (requestedTime != null) {
             Integer aiHour = parseHour(requestedTime);
-            if (textHours.isEmpty()) {
+            if (hourExprs.isEmpty()) {
                 corrections.add("[FIX] requestedTime=" + requestedTime + "→null (원문에 시각 근거 없음)");
                 requestedTime = null;
-            } else if (aiHour != null && !textHours.contains(aiHour)) {
-                String corrected = String.format("%02d:00", textHours.get(0));
-                corrections.add("[FIX] requestedTime: " + requestedTime + "→" + corrected + " (원문 기준)");
-                requestedTime = corrected;
+            } else if (aiHour != null && hourExprs.stream().anyMatch(e -> e.candidates().contains(aiHour))) {
+                // AI 시가 어느 후보와 일치 → 유지 (모호한 경우도 AI가 선택한 쪽이 유효한 해석 중 하나)
+            } else {
+                Integer firstUnambiguous = hourExprs.stream()
+                        .filter(e -> !e.ambiguous())
+                        .flatMap(e -> e.candidates().stream())
+                        .findFirst()
+                        .orElse(null);
+                if (firstUnambiguous != null) {
+                    String corrected = String.format("%02d:00", firstUnambiguous);
+                    corrections.add("[FIX] requestedTime: " + requestedTime + "→" + corrected + " (원문 기준)");
+                    requestedTime = corrected;
+                } else {
+                    // 모든 후보가 모호 → 어느 쪽으로도 단정하지 않고 null 처리 (scheduledTime은 Rule 3에서 missing에 추가됨)
+                    corrections.add("[FIX] requestedTime=" + requestedTime + "→null (원문 시각이 모호함)");
+                    requestedTime = null;
+                }
             }
         }
-        if (factors.contains("night_work")) {
-            boolean nightOk = NIGHT_WORDS.matcher(text).find()
-                    || isNightHour(requestedTime)
-                    || textHours.stream().anyMatch(h -> h >= 22 || h < 6);
-            if (!nightOk) {
+
+        // night_work — 심야 단어 OR 확정 시각이 야간대일 때만 "근거 있음".
+        // 모호한 시각(1~11시 수식어 없음)은 그 자체로는 근거로 쓰지 않음 (추가/제거 모두 안 함).
+        if (requestType == RequestType.CHANGE) {
+            boolean nightWord = NIGHT_WORDS.matcher(text).find();
+            Set<Integer> unambiguousHours = new LinkedHashSet<>();
+            for (HourExpr e : hourExprs) {
+                if (!e.ambiguous()) unambiguousHours.addAll(e.candidates());
+            }
+            boolean confirmedNight = nightWord || unambiguousHours.stream().anyMatch(h -> h >= 22 || h < 6);
+            boolean confirmedNotNight = !confirmedNight && !unambiguousHours.isEmpty();
+            boolean hasNightFactor = factors.contains("night_work");
+            if (confirmedNight && !hasNightFactor) {
+                factors.add("night_work");
+                corrections.add("[FIX] riskFactor+night_work (심야 작업 근거 있음)");
+            } else if (confirmedNotNight && hasNightFactor) {
                 factors.remove("night_work");
                 corrections.add("[FIX] riskFactor-night_work (근거 없음)");
             }
+            // 모호한 경우(unambiguousHours 비어있고 심야 단어 없음) → 추가/제거 모두 skip
         }
 
         // 4) rollback/test 일치성 (CHANGE에서만) :
@@ -245,33 +270,84 @@ public class TriageValidator {
                     && !ROLLBACK_NEGATED.matcher(text).find();
             case "sourceIp", "destinationIp" -> IP_PATTERN.matcher(text).find();
             case "port" -> PORT_PATTERN.matcher(text).find();
-            case "occurredAt" -> OCCURRED_WORDS.matcher(text).find() || !extractHours(text).isEmpty();
+            case "occurredAt" -> OCCURRED_WORDS.matcher(text).find() || !extractHourExprs(text).isEmpty();
             case "errorMessage" -> ERROR_WORDS.matcher(text).find();
             default -> true;    // AUTO_FILLABLE 밖 필드는 호출되지 않지만, 호출돼도 "제공됨"으로 간주해 자동 추가 안 함
         };
     }
 
-    /** 원문에서 시각(hour) 후보를 24시 기준 정수로 추출. "N시간"처럼 지속시간은 제외. */
-    private static List<Integer> extractHours(String text) {
-        List<Integer> hours = new ArrayList<>();
+    /**
+     * 원문에서 시각 표현을 뽑아 각 occurrence마다 후보 집합과 모호성 플래그를 돌려준다.
+     *   - HH:MM, "0시", "12시", "13~23시" → 확정 (ambiguous=false)
+     *   - 수식어(오전/오후/새벽/아침/저녁/밤/AM/PM) + "N시" → 확정
+     *   - 수식어 없는 "1~11시" → 모호 (후보 {N, N+12})
+     *   - "N시간"(지속시간)은 제외
+     */
+    private record HourExpr(Set<Integer> candidates, boolean ambiguous) {
+    }
+
+    private static List<HourExpr> extractHourExprs(String text) {
+        List<HourExpr> exprs = new ArrayList<>();
         Matcher m1 = HHMM.matcher(text);
         while (m1.find()) {
             int h = Integer.parseInt(m1.group(1));
-            if (h >= 0 && h < 24) hours.add(h);
+            if (h >= 0 && h < 24) exprs.add(new HourExpr(Set.of(h), false));
         }
         Matcher m2 = HOUR_WORD.matcher(text);
         while (m2.find()) {
-            String ampm = m2.group(1);
+            String modifier = m2.group(1);
             int h = Integer.parseInt(m2.group(2));
             if (h < 0 || h > 24) continue;
-            if ("오후".equals(ampm) || "PM".equalsIgnoreCase(ampm)) {
-                if (h != 12) h += 12;
-            } else if ("오전".equals(ampm) || "AM".equalsIgnoreCase(ampm)) {
-                if (h == 12) h = 0;
+
+            if (modifier == null) {
+                // 수식어 없음 — 1~11시만 모호, 그 외(0, 12, 13~23)는 24시간 표기로 간주
+                if (h >= 1 && h <= 11) {
+                    exprs.add(new HourExpr(Set.of(h, h + 12), true));
+                } else if (h >= 0 && h < 24) {
+                    exprs.add(new HourExpr(Set.of(h), false));
+                }
+            } else {
+                Integer converted = convertWithModifier(modifier, h);
+                if (converted != null) {
+                    exprs.add(new HourExpr(Set.of(converted), false));
+                }
             }
-            if (h >= 0 && h < 24) hours.add(h);
         }
-        return hours;
+        return exprs;
+    }
+
+    /**
+     * 한국어 시각 수식어 + N시(0~24) → 24시 표기로 변환.
+     *   "밤 N시"   : N=1~5 → N (새벽대), N=6~11 → N+12 (저녁~늦은 밤), N=12 → 0 (자정)
+     *   "저녁/오후": N=1~11 → N+12, N=12 → 12
+     *   "새벽/오전/아침": N=12 → 0, 그 외 → N
+     * 비정상 입력(h≥13 등)은 그대로 유지해 손상시키지 않음.
+     */
+    private static Integer convertWithModifier(String modifier, int h) {
+        if ("밤".equals(modifier)) {
+            if (h >= 1 && h <= 5) return h;
+            if (h >= 6 && h <= 11) return h + 12;
+            if (h == 12) return 0;
+            return (h >= 0 && h < 24) ? h : null;
+        }
+        if (isPmModifier(modifier)) {
+            if (h >= 1 && h <= 11) return h + 12;
+            return (h >= 0 && h < 24) ? h : null;
+        }
+        if (isAmModifier(modifier)) {
+            if (h == 12) return 0;
+            return (h >= 0 && h < 24) ? h : null;
+        }
+        return null;
+    }
+
+    private static boolean isAmModifier(String m) {
+        return "오전".equals(m) || "새벽".equals(m) || "아침".equals(m) || "AM".equalsIgnoreCase(m);
+    }
+
+    /** 순수 PM 수식어 (오후/저녁/PM). "밤"은 N 범위에 따라 갈라져 별도 처리. */
+    private static boolean isPmModifier(String m) {
+        return "오후".equals(m) || "저녁".equals(m) || "PM".equalsIgnoreCase(m);
     }
 
     private static Integer parseHour(String hhmm) {
@@ -282,11 +358,6 @@ public class TriageValidator {
             return (h >= 0 && h < 24) ? h : null;
         }
         return null;
-    }
-
-    private static boolean isNightHour(String hhmm) {
-        Integer h = parseHour(hhmm);
-        return h != null && (h >= 22 || h < 6);
     }
 
     private static List<String> filter(List<String> values, Set<String> allowed) {
