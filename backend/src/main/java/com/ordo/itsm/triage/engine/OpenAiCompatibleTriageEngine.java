@@ -193,7 +193,6 @@ public class OpenAiCompatibleTriageEngine implements TriageEngine {
                 "required", List.of("factor", "quote"),
                 "additionalProperties", false
         )));
-        props.put("clarifyingQuestions", arrayOf(Map.of("type", "string")));
         props.put("confidence", Map.of("type", "number"));
 
         Map<String, Object> schema = new LinkedHashMap<>();

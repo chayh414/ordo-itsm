@@ -136,14 +136,13 @@ public class GeminiTriageEngine implements TriageEngine {
                 ),
                 "required", List.of("factor", "quote")
         )));
-        props.put("clarifyingQuestions", Map.of("type", "ARRAY", "items", Map.of("type", "STRING")));
         props.put("confidence", Map.of("type", "NUMBER"));
 
         return Map.of(
                 "type", "OBJECT",
                 "properties", props,
                 "required", List.of("requestType", "category", "recommendedPriority", "recommendedTeam",
-                        "missingFields", "riskFactors", "evidence", "clarifyingQuestions", "confidence")
+                        "missingFields", "riskFactors", "evidence", "confidence")
         );
     }
 

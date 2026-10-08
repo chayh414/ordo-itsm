@@ -39,9 +39,10 @@ final class TriagePrompt {
             test_plan_missing: 테스트 계획·결과 없음 (변경 요청에만 해당)
             night_work: 22시~06시 작업
 
+            [evidence.quote] 각 근거 인용문은 원문에서 그대로 발췌하되 30자 이내로 짧게 자르세요.
+
             [기타]
             - requestedTime: 원문에 작업 시각이 있으면 "HH:mm" 형식
-            - clarifyingQuestions: missingFields 각각에 대해 고객에게 물어볼 정중한 한국어 질문
             - confidence: 분류에 대한 확신도 0.0~1.0
             """;
 
