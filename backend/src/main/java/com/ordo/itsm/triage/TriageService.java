@@ -33,8 +33,12 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class TriageService {
 
-    /** 트리아지 결과로 상태를 바꿔도 되는 단계 (작업이 진행된 티켓은 건드리지 않음) */
+    /**
+     * 트리아지 결과로 메타데이터·상태를 반영해도 되는 단계.
+     * DRAFT 는 포함 — 메타데이터(분류·환경 등)만 채우고 상태 전환·SLA 정지는 submit 시점으로 미룬다.
+     */
     private static final Set<TicketStatus> TRIAGEABLE = Set.of(
+            TicketStatus.DRAFT,
             TicketStatus.SUBMITTED, TicketStatus.INFO_REQUIRED, TicketStatus.TRIAGED);
 
     private final TicketRepository ticketRepository;
@@ -88,6 +92,21 @@ public class TriageService {
                 result, null, ticket.getStatus(), slaPaused || isSlaPaused(ticketId));
     }
 
+    /**
+     * 저장된 최신 트리아지 결과(SUCCESS)를 지금 상태 티켓에 재적용한다.
+     * DRAFT → SUBMITTED 로 접수한 직후, 누락 정보가 있으면 INFO_REQUIRED + SLA 정지가 반영되도록 호출.
+     */
+    @Transactional
+    public void applyLatestToTicket(AuthUser user, Long ticketId) {
+        Ticket ticket = loadAccessible(user, ticketId);
+        AiTriageRecord record = recordRepository.findTopByTicket_IdOrderByAttemptNoDesc(ticketId).orElse(null);
+        if (record == null || record.getResultStatus() != TriageResultStatus.SUCCESS || record.getResultJson() == null) {
+            return;
+        }
+        TriageResult result = jsonMapper.readValue(record.getResultJson(), TriageResult.class);
+        applyToTicket(user, ticket, result);
+    }
+
     /** 최신 트리아지 결과 */
     @Transactional(readOnly = true)
     public TriageResponse latest(AuthUser user, Long ticketId) {
@@ -110,6 +129,11 @@ public class TriageService {
             return false;
         }
         ticket.applyTriage(result.requestType(), result.category(), result.environment(), result.affectedService());
+
+        // DRAFT 는 아직 접수 전 — 상태 전환·SLA 정지는 submit 시점에 applyLatestToTicket 로 적용한다.
+        if (ticket.getStatus() == TicketStatus.DRAFT) {
+            return false;
+        }
 
         if (result.missingFields().isEmpty()) {
             return false;

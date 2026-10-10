@@ -1,6 +1,9 @@
 # Env
 .env
 
+# Spike raw logs (keep spike-tools.ps1 and the result md, exclude raw per-attempt log)
+docs/scripts/spike-tools.log.jsonl
+
 # IntelliJ
 .idea/
 *.iml

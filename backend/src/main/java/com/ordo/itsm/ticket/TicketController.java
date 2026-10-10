@@ -49,4 +49,16 @@ public class TicketController {
                                     @PathVariable Long ticketId) {
         return ticketService.get(user, ticketId);
     }
+
+    /**
+     * DRAFT 티켓(어시스턴트가 만든 초안)을 사용자가 명시적으로 접수한다.
+     * 접수 직후 트리아지 결과를 재적용해 누락 정보가 있으면 INFO_REQUIRED + SLA 정지가 반영된다.
+     */
+    @PostMapping("/{ticketId}/submit")
+    public TicketDetailResponse submit(@AuthenticationPrincipal AuthUser user,
+                                       @PathVariable Long ticketId) {
+        ticketService.submit(user, ticketId);
+        triageService.applyLatestToTicket(user, ticketId);
+        return ticketService.get(user, ticketId);
+    }
 }

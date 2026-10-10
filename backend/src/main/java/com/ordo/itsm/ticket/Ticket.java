@@ -87,6 +87,24 @@ public class Ticket {
 
     public static Ticket create(String ticketNo, Tenant tenant, User requester,
                                 String subject, String originalRequest) {
+        Ticket ticket = base(ticketNo, tenant, requester, subject, originalRequest);
+        ticket.status = TicketStatus.SUBMITTED;
+        return ticket;
+    }
+
+    /**
+     * 어시스턴트가 LLM 판단만으로 임시 생성하는 초안.
+     * 사용자가 카드에서 [접수하기] 를 눌러 submit() 할 때 SUBMITTED 로 전환되며 SLA 가 시작된다.
+     */
+    public static Ticket createDraft(String ticketNo, Tenant tenant, User requester,
+                                     String subject, String originalRequest) {
+        Ticket ticket = base(ticketNo, tenant, requester, subject, originalRequest);
+        ticket.status = TicketStatus.DRAFT;
+        return ticket;
+    }
+
+    private static Ticket base(String ticketNo, Tenant tenant, User requester,
+                               String subject, String originalRequest) {
         Ticket ticket = new Ticket();
         ticket.ticketNo = ticketNo;
         ticket.tenant = tenant;
@@ -94,7 +112,6 @@ public class Ticket {
         ticket.subject = subject;
         ticket.originalRequest = originalRequest;
         ticket.detailJson = "{}";
-        ticket.status = TicketStatus.SUBMITTED;
         return ticket;
     }
 

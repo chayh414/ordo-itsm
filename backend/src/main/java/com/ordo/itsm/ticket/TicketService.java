@@ -48,21 +48,17 @@ public class TicketService {
     private final AuditLogService auditLogService;
     private final JsonMapper jsonMapper;
 
-    /** 요청 등록: 원문 저장 → 티켓번호 발급 → SLA 시작 → 감사 로그 */
+    /** 요청 등록: 원문 저장 → 티켓번호 발급 → SLA 시작 → 감사 로그 (직통 접수) */
     @Transactional
     public TicketCreatedResponse create(AuthUser user, CreateTicketRequest request) {
         if (user.isProviderSide()) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "요청 등록은 고객사 사용자만 할 수 있습니다.");
         }
 
-        // tenantId는 클라이언트 입력이 아니라 토큰에서 꺼낸 값을 사용
-        Tenant tenant = tenantRepository.getReferenceById(user.tenantId());
-        User requester = userRepository.getReferenceById(user.userId());
-
         Ticket ticket = ticketRepository.save(Ticket.create(
                 ticketNumberGenerator.next(),
-                tenant,
-                requester,
+                tenantRepository.getReferenceById(user.tenantId()),
+                userRepository.getReferenceById(user.userId()),
                 request.subject().trim(),
                 request.originalRequest().trim()
         ));
@@ -77,31 +73,98 @@ public class TicketService {
         auditLogService.record(AuditAction.TICKET_CREATED, user, user.tenantId(), ticket.getId(), null, after);
 
         return new TicketCreatedResponse(
-                ticket.getId(),
-                ticket.getTicketNo(),
-                ticket.getStatus(),
-                SlaResponse.from(sla),
-                null,
-                ticket.getCreatedAt()
-        );
+                ticket.getId(), ticket.getTicketNo(), ticket.getStatus(),
+                SlaResponse.from(sla), null, ticket.getCreatedAt());
     }
 
-    /** 목록: 로그인 사용자의 고객사 접근 범위 안에서만 조회 */
+    /**
+     * 어시스턴트 경로 — LLM 판단만으로 티켓을 임시(DRAFT) 생성한다.
+     * SLA 는 시작하지 않고, 트리아지(별도 호출)로 메타데이터만 채운다.
+     * 사용자가 카드의 [접수하기] 로 submit() 를 호출해야 실제 접수가 된다.
+     */
+    @Transactional
+    public TicketCreatedResponse createDraft(AuthUser user, CreateTicketRequest request) {
+        if (user.isProviderSide()) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "요청 등록은 고객사 사용자만 할 수 있습니다.");
+        }
+
+        Ticket ticket = ticketRepository.save(Ticket.createDraft(
+                ticketNumberGenerator.next(),
+                tenantRepository.getReferenceById(user.tenantId()),
+                userRepository.getReferenceById(user.userId()),
+                request.subject().trim(),
+                request.originalRequest().trim()
+        ));
+
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("ticketNo", ticket.getTicketNo());
+        after.put("subject", ticket.getSubject());
+        after.put("status", ticket.getStatus().name());
+        after.put("source", "ASSISTANT_DRAFT");
+        auditLogService.record(AuditAction.TICKET_CREATED, user, user.tenantId(), ticket.getId(), null, after);
+
+        return new TicketCreatedResponse(
+                ticket.getId(), ticket.getTicketNo(), ticket.getStatus(),
+                null, null, ticket.getCreatedAt());
+    }
+
+    /**
+     * DRAFT 티켓을 사용자가 직접 접수한다.
+     * - 요청자 본인만 가능
+     * - DRAFT 상태에서만 가능 (idempotent 아님: 이미 SUBMITTED 면 409)
+     * - SLA 를 시작하고 상태를 SUBMITTED 로 전환. 트리아지의 INFO_REQUIRED 전환은 호출자가 재적용.
+     */
+    @Transactional
+    public void submit(AuthUser user, Long ticketId) {
+        Ticket ticket = ticketRepository.findWithTenantAndRequesterById(ticketId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TICKET_NOT_FOUND));
+
+        if (!tenantAccessService.scopeOf(user).includes(ticket.getTenant().getId())
+                || !ticket.getRequester().getId().equals(user.userId())) {
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("reason", "NOT_OWNER");
+            detail.put("targetTicketNo", ticket.getTicketNo());
+            auditLogService.recordIndependently(AuditAction.ACCESS_DENIED, user, user.tenantId(), ticket.getId(), null, detail);
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "본인이 작성한 초안만 접수할 수 있습니다.");
+        }
+
+        if (ticket.getStatus() != TicketStatus.DRAFT) {
+            throw new BusinessException(ErrorCode.TICKET_INVALID_TRANSITION,
+                    "이미 접수된 요청입니다. (현재 상태: " + ticket.getStatus() + ")");
+        }
+
+        TicketStatus before = ticket.getStatus();
+        ticket.changeStatus(TicketStatus.SUBMITTED);
+        TicketSla sla = slaService.start(ticket);
+
+        auditLogService.record(AuditAction.STATUS_CHANGED, user, ticket.getTenant().getId(), ticket.getId(),
+                Map.of("status", before.name()),
+                Map.of("status", TicketStatus.SUBMITTED.name(),
+                        "reason", "USER_CONFIRMED",
+                        "slaResolutionDueAt", sla.getResolutionDueAt().toString()));
+    }
+
+    /**
+     * 목록: 접근 범위 안에서만 + DRAFT 가시성 규칙 적용.
+     * DRAFT 는 작성자 본인에게만 보이고, 그 외 사용자(같은 테넌트 포함)에게는 숨긴다.
+     */
     public PageResponse<TicketSummaryResponse> list(AuthUser user, TicketStatus status, Pageable pageable) {
         TenantScope scope = tenantAccessService.scopeOf(user);
         if (scope.isEmpty()) {
             return PageResponse.empty(pageable);
         }
 
+        TicketStatus draft = TicketStatus.DRAFT;
+        Long userId = user.userId();
         Page<Ticket> page;
         if (scope.all()) {
             page = (status == null)
-                    ? ticketRepository.findAll(pageable)
-                    : ticketRepository.findByStatus(status, pageable);
+                    ? ticketRepository.findAllVisible(draft, userId, pageable)
+                    : ticketRepository.findByStatusVisible(status, draft, userId, pageable);
         } else {
             page = (status == null)
-                    ? ticketRepository.findByTenant_IdIn(scope.tenantIds(), pageable)
-                    : ticketRepository.findByTenant_IdInAndStatus(scope.tenantIds(), status, pageable);
+                    ? ticketRepository.findByTenantInVisible(scope.tenantIds(), draft, userId, pageable)
+                    : ticketRepository.findByTenantInAndStatusVisible(scope.tenantIds(), status, draft, userId, pageable);
         }
 
         List<Long> ids = page.getContent().stream().map(Ticket::getId).toList();
@@ -111,6 +174,40 @@ public class TicketService {
                         .collect(Collectors.toMap(s -> s.getTicket().getId(), Function.identity()));
 
         return PageResponse.from(page.map(t -> TicketSummaryResponse.from(t, slaByTicketId.get(t.getId()))));
+    }
+
+    /**
+     * 어시스턴트 "내 요청" 전용 조회. REQUESTER 는 본인 작성 티켓만, CUSTOMER_ADMIN 은 자기 테넌트 전체(가시성 필터 적용).
+     * 그 외 역할은 호출되지 않는다 (dispatcher 가 미리 걸러줌). 호출되면 500.
+     */
+    public PageResponse<TicketSummaryResponse> listMine(AuthUser user, TicketStatus status, Pageable pageable) {
+        return switch (user.role()) {
+            case REQUESTER -> {
+                Page<Ticket> page = (status == null)
+                        ? ticketRepository.findByRequester_Id(user.userId(), pageable)
+                        : ticketRepository.findByRequester_IdAndStatus(user.userId(), status, pageable);
+                yield mapToSummaryPage(page);
+            }
+            case CUSTOMER_ADMIN -> list(user, status, pageable);
+            default -> throw new BusinessException(ErrorCode.ACCESS_DENIED,
+                    "listMine 은 요청자/고객사 관리자 전용입니다.");
+        };
+    }
+
+    private PageResponse<TicketSummaryResponse> mapToSummaryPage(Page<Ticket> page) {
+        List<Long> ids = page.getContent().stream().map(Ticket::getId).toList();
+        Map<Long, TicketSla> slaByTicketId = ids.isEmpty()
+                ? Map.of()
+                : ticketSlaRepository.findByTicket_IdIn(ids).stream()
+                        .collect(Collectors.toMap(s -> s.getTicket().getId(), Function.identity()));
+        return PageResponse.from(page.map(t -> TicketSummaryResponse.from(t, slaByTicketId.get(t.getId()))));
+    }
+
+    /** 티켓번호로 상세 조회 — 어시스턴트의 get_request 도구에서 사용. */
+    public TicketDetailResponse getByTicketNo(AuthUser user, String ticketNo) {
+        Ticket ticket = ticketRepository.findByTicketNo(ticketNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TICKET_NOT_FOUND));
+        return get(user, ticket.getId());
     }
 
     /** 상세: 다른 고객사 티켓이면 403 + 접근 거부 감사 로그 */

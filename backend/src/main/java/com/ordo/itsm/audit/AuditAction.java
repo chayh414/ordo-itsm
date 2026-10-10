@@ -18,5 +18,6 @@ public enum AuditAction {
     REJECTED,
     COMMENT_ADDED,
     LOGIN_FAILED,
-    ACCESS_DENIED
+    ACCESS_DENIED,
+    ASSISTANT_TOOL_CALLED
 }
