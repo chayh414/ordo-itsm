@@ -1,0 +1,7 @@
+:root{--ink:#111111;--body:#2B2B2B;--mute:#6F6F6F;--faint:#A6A6A6;--line:#E3E3E3;--bg:#FFFFFF;--soft:#F6F6F4;--risk:#C8341F}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Pretendard","Noto Sans CJK KR",sans-serif;color:var(--ink);background:var(--bg);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.meta{font-size:13px;color:var(--mute)}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 22px;font-size:15px;font-weight:600;background:var(--ink);color:#fff;border:1px solid var(--ink)}
+.btn.text{background:transparent;color:var(--ink);border-color:transparent;text-decoration:underline;text-underline-offset:4px}
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .9s cubic-bezier(.2,.7,.2,1),transform .9s cubic-bezier(.2,.7,.2,1)}.reveal.in{opacity:1;transform:none}
