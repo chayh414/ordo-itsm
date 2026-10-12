@@ -32,16 +32,19 @@ public class HttpAssistantLlmClient implements AssistantLlmClient {
     private final String baseUrl;
     private final String apiKey;
     private final String model;
+    private final int contextLength;
 
     public HttpAssistantLlmClient(JsonMapper jsonMapper,
                                   @Value("${llm.base-url:http://localhost:11434/v1}") String baseUrl,
                                   @Value("${llm.api-key:}") String apiKey,
                                   @Value("${llm.model:}") String model,
-                                  @Value("${llm.timeout-seconds:60}") int timeoutSeconds) {
+                                  @Value("${llm.timeout-seconds:60}") int timeoutSeconds,
+                                  @Value("${llm.context-length:8192}") int contextLength) {
         this.jsonMapper = jsonMapper;
         this.baseUrl = normalizeBaseUrl(baseUrl);
         this.apiKey = apiKey;
         this.model = model;
+        this.contextLength = contextLength;
 
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
@@ -149,11 +152,32 @@ public class HttpAssistantLlmClient implements AssistantLlmClient {
                     calls.add(new ToolCall(id, name, args));
                 }
             }
-            return new AssistantReply(content, calls);
+
+            // usage.prompt_tokens 모니터링 — 컨텍스트 압박 사전 감지
+            Integer promptTokens = extractPromptTokens(root);
+            if (promptTokens != null) {
+                log.info("[Assistant LLM] prompt_tokens={} (ctx={}, model={})",
+                        promptTokens, contextLength, model);
+                if (promptTokens > (int) (contextLength * 0.8)) {
+                    log.warn("[Assistant LLM] prompt_tokens {} > 80% of context_length {} — tool_calls 누락/텍스트 복구 가능성 상승",
+                            promptTokens, contextLength);
+                }
+            }
+
+            return new AssistantReply(content, calls, promptTokens);
         } catch (RuntimeException e) {
             log.warn("[Assistant LLM] 응답 파싱 실패: {}", body);
             throw new AssistantLlmException("AI 응답을 해석하지 못했습니다", e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Integer extractPromptTokens(Map<String, Object> root) {
+        Object usage = root.get("usage");
+        if (!(usage instanceof Map<?, ?> u)) return null;
+        Object pt = ((Map<String, Object>) u).get("prompt_tokens");
+        if (pt instanceof Number n) return n.intValue();
+        return null;
     }
 
     @SuppressWarnings("unchecked")

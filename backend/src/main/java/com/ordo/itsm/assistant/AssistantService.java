@@ -7,6 +7,7 @@ import com.ordo.itsm.assistant.engine.AssistantLlmException;
 import com.ordo.itsm.assistant.engine.AssistantReply;
 import com.ordo.itsm.assistant.engine.ChatMessage;
 import com.ordo.itsm.assistant.engine.ToolCall;
+import com.ordo.itsm.assistant.engine.ToolCallRecovery;
 import com.ordo.itsm.assistant.engine.ToolSpec;
 import com.ordo.itsm.assistant.tool.AssistantTool;
 import com.ordo.itsm.assistant.tool.ToolResult;
@@ -17,15 +18,22 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 어시스턴트의 대화 루프.
  * 1) 사용자 메시지 마스킹 → 2) 역할별 tools 와 함께 LLM 호출
  * 3) tool_calls 있으면 dispatcher 로 실행 → tool 결과 되돌려주기
- * 4) 자연어 답변이 나올 때까지 최대 maxIterations 회 반복. 상한 초과 시 안전한 폴백 메시지.
+ * 4) tool_calls 가 없고 content 에 함수 호출 텍스트가 있으면 복구해서 실행 (ToolCallRecovery)
+ * 5) 자연어 답변이 나올 때까지 최대 maxIterations 회 반복. 상한 초과 시 안전한 폴백 메시지.
+ *
+ * 사용자에게 돌려주는 최종 reply content 에는 함수 호출 문자열이 남지 않도록 strip 를 거친다.
  *
  * 과거 history 는 서버에 저장하지 않는다. 클라이언트가 매 턴 재전송 (서버는 20개까지만 수용).
  * history 의 role=tool 은 신뢰할 수 없으므로 user/assistant 만 받아들인다.
@@ -41,6 +49,7 @@ public class AssistantService {
     private final AssistantToolRegistry registry;
     private final AssistantToolDispatcher dispatcher;
     private final SensitiveDataMasker masker;
+    private final JsonMapper jsonMapper;
 
     @Value("${assistant.max-tool-iterations:3}")
     private int maxIterations;
@@ -55,6 +64,9 @@ public class AssistantService {
         List<ToolSpec> toolSpecs = tools.stream()
                 .map(t -> new ToolSpec(t.name(), t.description(), t.parametersSchema()))
                 .toList();
+        Set<String> allowedToolNames = tools.stream()
+                .map(AssistantTool::name)
+                .collect(Collectors.toUnmodifiableSet());
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPromptFor(user.role())));
@@ -82,17 +94,46 @@ public class AssistantService {
                         "지금 AI 서버와 연결이 원활하지 않아요. 잠시 뒤 다시 시도해 주세요.",
                         cards, callLog, false);
             }
-            messages.add(ChatMessage.assistant(reply.content(), reply.toolCalls()));
 
-            if (!reply.hasToolCalls()) {
-                String content = (reply.content() == null || reply.content().isBlank())
-                        ? "요청을 이해하지 못했어요. 조금만 더 설명해 주실래요?"
-                        : reply.content();
-                return new ChatResponse(content, cards, callLog, false);
+            List<ToolCall> effectiveCalls = reply.toolCalls();
+            boolean recovered = false;
+            String assistantContent = reply.content();
+
+            // tool_calls 가 비어있으면 content 에서 복구 시도 (노트북 Ollama 컨텍스트 압박 시 잦음)
+            if (effectiveCalls == null || effectiveCalls.isEmpty()) {
+                List<ToolCallRecovery.Recovered> rc =
+                        ToolCallRecovery.parse(reply.content(), allowedToolNames, jsonMapper);
+                if (!rc.isEmpty()) {
+                    recovered = true;
+                    effectiveCalls = new ArrayList<>();
+                    for (ToolCallRecovery.Recovered r : rc) {
+                        String id = "rec_" + UUID.randomUUID().toString().substring(0, 8);
+                        effectiveCalls.add(new ToolCall(id, r.name(), r.arguments()));
+                    }
+                    // 복구가 성공했으면 content 에서 호출 문자열은 제거 (남은 자연어만 history 에 남긴다)
+                    String stripped = ToolCallRecovery.strip(reply.content(), allowedToolNames, jsonMapper);
+                    assistantContent = stripped.isBlank() ? null : stripped;
+                    log.info("[Assistant] 텍스트 도구 호출 복구 {}건 (user={})",
+                            effectiveCalls.size(), user.userId());
+                }
             }
 
-            for (ToolCall call : reply.toolCalls()) {
-                ToolResult result = dispatcher.dispatch(user, call.name(), call.arguments());
+            messages.add(ChatMessage.assistant(assistantContent, effectiveCalls));
+
+            if (effectiveCalls == null || effectiveCalls.isEmpty()) {
+                // tool 호출 없음 & 복구 없음 → 자연어 답변으로 종료.
+                // content 에 혹시 남은 함수 호출 흔적을 한번 더 strip 해서 화면 보호.
+                String clean = ToolCallRecovery.strip(reply.content(), allowedToolNames, jsonMapper);
+                if (clean.isBlank()) {
+                    clean = cards.isEmpty()
+                            ? "요청을 이해하지 못했어요. 조금만 더 설명해 주실래요?"
+                            : "요청하신 작업을 처리했어요. 아래 결과를 확인해 주세요.";
+                }
+                return new ChatResponse(clean, cards, callLog, false);
+            }
+
+            for (ToolCall call : effectiveCalls) {
+                ToolResult result = dispatcher.dispatch(user, call.name(), call.arguments(), recovered);
                 messages.add(ChatMessage.tool(call.id(), result.llmText()));
                 if (result.cardData() != null) {
                     cards.add(new ChatResponse.Card(call.name(), result.cardData()));
@@ -123,7 +164,8 @@ public class AssistantService {
                 3) 특정 티켓번호(ORD-YYYYMMDD-NNNN)의 상태를 묻는 질문엔 get_request 를 호출하고,
                    티켓번호는 사용자 원문의 값을 그대로 전달한다. 지어내지 않는다.
                 4) 승인·상태 변경·실행 같은 조작 도구는 존재하지 않는다. 요청받아도 하지 못한다고 안내한다.
-                5) 도구 호출 뒤 결과를 사용자 언어로 짧게(2~3문장) 요약해 답한다.
+                5) 도구 호출은 반드시 tool_calls 로 보낸다. 답변 본문에 create_request("…") 같은
+                   함수 호출 문자열을 쓰지 않는다. 도구 호출 뒤 결과는 사용자 언어로 짧게(2~3문장) 요약한다.
                 역할: """ + role.name();
     }
 }

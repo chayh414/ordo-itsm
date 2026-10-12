@@ -43,3 +43,6 @@ llm:
   model: "${LLM_MODEL:qwen2.5:7b}"
   response-format: ${LLM_RESPONSE_FORMAT:json_schema}
   timeout-seconds: ${LLM_TIMEOUT_SECONDS:20}
+  # 어시스턴트 호출의 usage.prompt_tokens 모니터링 기준. 80% 초과 시 warn 로그.
+  # 로컬 Ollama 기본은 4096 이라 OLLAMA_CONTEXT_LENGTH=8192 로 올린 상태 가정.
+  context-length: ${LLM_CONTEXT_LENGTH:8192}

@@ -40,7 +40,7 @@ class AssistantServiceLoopTest {
     @Test
     void naturalLanguageReply_isReturnedAsIs_withNoToolCalls() {
         FakeLlm llm = new FakeLlm();
-        llm.enqueue(new AssistantReply("안녕하세요! 어떤 요청을 도와드릴까요?", List.of()));
+        llm.enqueue(new AssistantReply("안녕하세요! 어떤 요청을 도와드릴까요?", List.of(), null));
 
         AssistantService svc = build(llm, List.of());
 
@@ -59,8 +59,8 @@ class AssistantServiceLoopTest {
                 (u, args) -> { toolExecCount.incrementAndGet(); return ToolResult.ok("요청 2건", List.of("a","b")); });
 
         FakeLlm llm = new FakeLlm();
-        llm.enqueue(new AssistantReply(null, List.of(new ToolCall("c1", ListMyRequestsTool.NAME, Map.of()))));
-        llm.enqueue(new AssistantReply("최근 2건을 보여드렸어요.", List.of()));
+        llm.enqueue(new AssistantReply(null, List.of(new ToolCall("c1", ListMyRequestsTool.NAME, Map.of())), null));
+        llm.enqueue(new AssistantReply("최근 2건을 보여드렸어요.", List.of(), null));
 
         AssistantService svc = build(llm, List.of(fakeList));
 
@@ -81,7 +81,7 @@ class AssistantServiceLoopTest {
         FakeLlm llm = new FakeLlm();
         for (int i = 0; i < 5; i++) {
             llm.enqueue(new AssistantReply(null,
-                    List.of(new ToolCall("c" + i, GetRequestTool.NAME, Map.of("ticketNo", "ORD-x")))));
+                    List.of(new ToolCall("c" + i, GetRequestTool.NAME, Map.of("ticketNo", "ORD-x"))), null));
         }
 
         AssistantService svc = build(llm, List.of(fakeGet));
@@ -109,7 +109,7 @@ class AssistantServiceLoopTest {
     @Test
     void emptyAssistantContent_isReplacedWithPolitePrompt() {
         FakeLlm llm = new FakeLlm();
-        llm.enqueue(new AssistantReply("   ", List.of()));
+        llm.enqueue(new AssistantReply("   ", List.of(), null));
         AssistantService svc = build(llm, List.of());
 
         ChatResponse res = svc.chat(requester, new ChatRequest("hmm", null));
@@ -121,7 +121,7 @@ class AssistantServiceLoopTest {
     @Test
     void history_includesUserAndAssistant_butDropsToolRole() {
         FakeLlm llm = new FakeLlm();
-        llm.enqueue(new AssistantReply("ok", List.of()));
+        llm.enqueue(new AssistantReply("ok", List.of(), null));
 
         AssistantService svc = build(llm, List.of());
 
@@ -145,7 +145,7 @@ class AssistantServiceLoopTest {
     @Test
     void history_isTruncatedToLast20() {
         FakeLlm llm = new FakeLlm();
-        llm.enqueue(new AssistantReply("ok", List.of()));
+        llm.enqueue(new AssistantReply("ok", List.of(), null));
 
         AssistantService svc = build(llm, List.of());
 
@@ -169,8 +169,8 @@ class AssistantServiceLoopTest {
         FakeLlm llm = new FakeLlm();
         // OPERATOR 에게는 create_request 가 없음 — 호출돼도 거부되어야 함
         llm.enqueue(new AssistantReply(null,
-                List.of(new ToolCall("c1", CreateRequestTool.NAME, Map.of("text","방화벽")))));
-        llm.enqueue(new AssistantReply("저는 등록 권한이 없어서 요청드리지 못했습니다.", List.of()));
+                List.of(new ToolCall("c1", CreateRequestTool.NAME, Map.of("text","방화벽"))), null));
+        llm.enqueue(new AssistantReply("저는 등록 권한이 없어서 요청드리지 못했습니다.", List.of(), null));
 
         AssistantService svc = build(llm, List.of(fakeCreate));
         AuthUser operator = new AuthUser(2L, 10L, UserRole.OPERATOR, "op@sysone.demo");
@@ -194,7 +194,8 @@ class AssistantServiceLoopTest {
         }
         AssistantToolRegistry registry = new AssistantToolRegistry(all);
         AssistantToolDispatcher dispatcher = new AssistantToolDispatcher(registry, new NoopAudit());
-        AssistantService svc = new AssistantService(llm, registry, dispatcher, new SensitiveDataMasker());
+        AssistantService svc = new AssistantService(llm, registry, dispatcher, new SensitiveDataMasker(),
+                tools.jackson.databind.json.JsonMapper.builder().build());
         setMaxIterations(svc, 3);
         return svc;
     }
