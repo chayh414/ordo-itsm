@@ -68,6 +68,13 @@ const RISK_FACTOR: Record<string, string> = {
   night_work: '심야 작업',
 }
 
+const RISK_GRADE: Record<string, string> = {
+  LOW: '낮음',
+  MEDIUM: '보통',
+  HIGH: '높음',
+  CRITICAL: '매우 높음',
+}
+
 const FIELD_LABEL: Record<string, string> = {
   affectedService: '대상 서비스',
   occurredAt: '발생 시각',
@@ -97,6 +104,7 @@ export const label = {
   status: (v?: string | null) => (v ? STATUS[v] ?? v : '—'),
   docHeader: (v?: string | null) => (v ? DOC_HEADER[v] ?? STATUS[v] ?? v : '—'),
   riskFactor: (v: string) => RISK_FACTOR[v] ?? v,
+  riskGrade: (v?: string | null) => (v ? RISK_GRADE[v] ?? v : '—'),
   field: (v: string) => FIELD_LABEL[v] ?? v,
 }
 

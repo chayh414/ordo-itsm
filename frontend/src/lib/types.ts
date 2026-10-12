@@ -80,6 +80,8 @@ export interface TriageResult {
   corrections: string[] | null
 }
 
+export type RiskGrade = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+
 export interface TriageResponse {
   attemptNo: number
   resultStatus: 'SUCCESS' | 'INVALID_JSON' | 'FAILED'
@@ -90,6 +92,11 @@ export interface TriageResponse {
   message: string | null
   ticketStatus: string
   slaPaused: boolean
+  /** CHANGE 요청만 계산됨. 그 외(장애·문의 등)는 null. */
+  riskScore: number | null
+  riskGrade: RiskGrade | null
+  /** 요인 → 점수 분해 (화면 요인 행 오른쪽 "+3" 용). */
+  factorPoints: Record<string, number> | null
 }
 
 /* 어시스턴트 /chat */

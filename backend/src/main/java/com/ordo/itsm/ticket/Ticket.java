@@ -131,6 +131,11 @@ public class Ticket {
         this.status = next;
     }
 
+    /** RiskPolicyService 가 산정한 등급을 티켓에 반영. */
+    public void applyRisk(RiskGrade grade) {
+        this.riskGrade = grade;
+    }
+
     @PrePersist
     void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();

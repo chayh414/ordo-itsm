@@ -5,6 +5,10 @@ import com.ordo.itsm.audit.AuditLogService;
 import com.ordo.itsm.global.exception.BusinessException;
 import com.ordo.itsm.global.exception.ErrorCode;
 import com.ordo.itsm.global.security.AuthUser;
+import com.ordo.itsm.risk.RiskAssessment;
+import com.ordo.itsm.risk.RiskAssessmentRepository;
+import com.ordo.itsm.risk.RiskPolicy;
+import com.ordo.itsm.risk.RiskPolicyService;
 import com.ordo.itsm.sla.TicketSla;
 import com.ordo.itsm.sla.TicketSlaRepository;
 import com.ordo.itsm.tenant.TenantAccessService;
@@ -49,6 +53,8 @@ public class TriageService {
     private final TriageEngine engine;
     private final TriageValidator validator;
     private final AuditLogService auditLogService;
+    private final RiskPolicyService riskPolicyService;
+    private final RiskAssessmentRepository riskAssessmentRepository;
     private final JsonMapper jsonMapper;
 
     /**
@@ -74,6 +80,7 @@ public class TriageService {
                 TriageResultStatus.SUCCESS, jsonMapper.writeValueAsString(result), result.confidence()));
 
         boolean slaPaused = applyToTicket(user, ticket, result);
+        RiskPolicy.Outcome risk = riskPolicyService.assess(user, ticket, result);
 
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("attemptNo", attemptNo);
@@ -89,7 +96,10 @@ public class TriageService {
 
         return new TriageResponse(attemptNo, TriageResultStatus.SUCCESS, engine.modelName(),
                 result.confidence(), result.confidence() < TriageResponse.REVIEW_THRESHOLD,
-                result, null, ticket.getStatus(), slaPaused || isSlaPaused(ticketId));
+                result, null, ticket.getStatus(), slaPaused || isSlaPaused(ticketId),
+                risk == null ? null : risk.score(),
+                risk == null ? null : risk.grade(),
+                risk == null ? null : risk.factorPoints());
     }
 
     /**
@@ -119,9 +129,27 @@ public class TriageService {
                 : null;
         Double confidence = record.getConfidence() == null ? null : record.getConfidence().doubleValue();
 
+        // 저장된 current 평가가 있으면 그대로 돌려준다 (재계산하지 않음)
+        RiskAssessment risk = riskAssessmentRepository.findByTicket_IdAndCurrentTrue(ticketId).orElse(null);
+        Integer riskScore = risk == null ? null : risk.getScore();
+        var riskGrade = risk == null ? null : risk.getGrade();
+        Map<String, Integer> factorPoints = null;
+        if (risk != null) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> raw = jsonMapper.readValue(risk.getFactorsJson(), Map.class);
+                Map<String, Integer> parsed = new LinkedHashMap<>();
+                for (var e : raw.entrySet()) parsed.put(e.getKey(), ((Number) e.getValue()).intValue());
+                factorPoints = parsed;
+            } catch (RuntimeException ignored) {
+                factorPoints = null;
+            }
+        }
+
         return new TriageResponse(record.getAttemptNo(), record.getResultStatus(), record.getModelName(),
                 confidence, confidence == null || confidence < TriageResponse.REVIEW_THRESHOLD,
-                result, null, ticket.getStatus(), isSlaPaused(ticketId));
+                result, null, ticket.getStatus(), isSlaPaused(ticketId),
+                riskScore, riskGrade, factorPoints);
     }
 
     private boolean applyToTicket(AuthUser user, Ticket ticket, TriageResult result) {
@@ -175,7 +203,8 @@ public class TriageService {
 
         return new TriageResponse(attemptNo, status, engine.modelName(), null, true, null,
                 e.getMessage() + " — 재시도하거나 수동으로 분류해 주세요.",
-                ticket.getStatus(), isSlaPaused(ticket.getId()));
+                ticket.getStatus(), isSlaPaused(ticket.getId()),
+                null, null, null);
     }
 
     private Ticket loadAccessible(AuthUser user, Long ticketId) {

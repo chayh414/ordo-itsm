@@ -13,10 +13,18 @@ export default function GetDoc({ card }: Props) {
   const { ticket, triage } = card
   const result = triage?.result ?? null
 
+  const factorPoints = triage?.factorPoints ?? null
   const riskRows = (result?.riskFactors ?? []).map((f) => {
     const ev = result?.evidence?.find((e) => e.factor === f)
-    return { factor: f, quote: ev?.quote ?? null }
+    return {
+      factor: f,
+      quote: ev?.quote ?? null,
+      points: factorPoints ? factorPoints[f] ?? null : null,
+    }
   })
+  const grade = triage?.riskGrade ?? null
+  const score = triage?.riskScore ?? null
+  const isHighRisk = grade === 'HIGH' || grade === 'CRITICAL'
 
   return (
     <article className="h-full flex flex-col overflow-y-auto px-16 pt-9 pb-10">
@@ -47,21 +55,43 @@ export default function GetDoc({ card }: Props) {
         </div>
       </div>
 
-      {riskRows.length > 0 && (
+      {(riskRows.length > 0 || grade) && (
         <section className="mt-7 grid gap-x-6" style={{ gridTemplateColumns: '180px 1fr' }}>
           <div>
-            <h3 className="text-[15px] font-semibold">위험 요인</h3>
+            <h3 className="text-[15px] font-semibold">
+              위험도
+              <small className="block font-normal text-mute text-[13px] mt-0.5">규칙에 따라 계산</small>
+            </h3>
+            {grade && score != null && (
+              <>
+                <div
+                  className="mt-1.5 text-[15px] font-semibold"
+                  style={isHighRisk ? { color: 'var(--color-risk)' } : undefined}
+                >
+                  {label.riskGrade(grade)} · {score}점
+                </div>
+                {isHighRisk && (
+                  <div className="text-[13px] text-mute mt-1">승인이 필요한 작업</div>
+                )}
+              </>
+            )}
           </div>
           <div>
             {riskRows.map((r, i) => (
               <div
                 key={r.factor}
                 className="grid border-t border-line py-2.5 text-[15px] items-baseline"
-                style={{ gridTemplateColumns: '36px 150px 1fr' }}
+                style={{ gridTemplateColumns: '36px 150px 1fr 40px' }}
               >
                 <span className="text-[13px] text-faint">{String(i + 1).padStart(2, '0')}</span>
                 <span>{label.riskFactor(r.factor)}</span>
                 <span className="text-mute">{r.quote ? `"${r.quote}"` : ''}</span>
+                <span
+                  className="text-right text-[15px] font-semibold"
+                  style={r.points != null ? { color: 'var(--color-risk)' } : undefined}
+                >
+                  {r.points != null ? `+${r.points}` : ''}
+                </span>
               </div>
             ))}
           </div>

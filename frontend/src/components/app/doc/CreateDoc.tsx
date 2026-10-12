@@ -23,16 +23,22 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
   const displayStatus = submitted ? ticket.status : ticket.status // ticket.status 는 호출자가 submit 성공 후 갱신해줌
   const headerText = label.docHeader(displayStatus)
 
-  // 위험 요인 행: evidence 가 있는 것은 quote 같이, 없으면 라벨만
-  type RiskRow = { factor: string; quote: string | null }
+  // 위험 요인 행: evidence 가 있는 것은 quote 같이, 없으면 라벨만. 점수는 factorPoints 에서.
+  type RiskRow = { factor: string; quote: string | null; points: number | null }
+  const factorPoints = triage.factorPoints ?? null
   const riskRows: RiskRow[] = (result?.riskFactors ?? []).map((f) => {
     const ev = result?.evidence?.find((e) => e.factor === f)
-    return { factor: f, quote: ev?.quote ?? null }
+    return {
+      factor: f,
+      quote: ev?.quote ?? null,
+      points: factorPoints ? factorPoints[f] ?? null : null,
+    }
   })
 
-  // 위험 점수·등급 — 백엔드에 없으므로 null. 생기면 표시.
-  const grade: string | null = null
-  const score: number | null = null
+  // 위험 점수·등급 — CHANGE 요청만 백엔드가 돌려줌. 그 외는 null (섹션 extra 숨김).
+  const grade = triage.riskGrade
+  const score = triage.riskScore
+  const isHighRisk = grade === 'HIGH' || grade === 'CRITICAL'
 
   const firstQuestion = result?.clarifyingQuestions?.[0] ?? null
   const firstMissing = result?.missingFields?.[0]
@@ -76,11 +82,18 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
         title="위험도"
         sub="규칙에 따라 계산"
         extra={
-          grade ? (
-            <div className="mt-1.5 text-[15px] font-semibold" style={{ color: 'var(--color-risk)' }}>
-              {grade}
-              {score != null ? ` · ${score}점` : ''}
-            </div>
+          grade && score != null ? (
+            <>
+              <div
+                className="mt-1.5 text-[15px] font-semibold"
+                style={isHighRisk ? { color: 'var(--color-risk)' } : undefined}
+              >
+                {label.riskGrade(grade)} · {score}점
+              </div>
+              {isHighRisk && (
+                <div className="text-[13px] text-mute mt-1">승인이 필요한 작업</div>
+              )}
+            </>
           ) : null
         }
       >
@@ -92,11 +105,17 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
               <div
                 key={r.factor}
                 className="grid border-t border-line py-2.5 text-[15px] items-baseline"
-                style={{ gridTemplateColumns: '36px 150px 1fr' }}
+                style={{ gridTemplateColumns: '36px 150px 1fr 40px' }}
               >
                 <span className="text-[13px] text-faint">{String(i + 1).padStart(2, '0')}</span>
                 <span>{label.riskFactor(r.factor)}</span>
                 <span className="text-mute">{r.quote ? `"${r.quote}"` : ''}</span>
+                <span
+                  className="text-right text-[15px] font-semibold"
+                  style={r.points != null ? { color: 'var(--color-risk)' } : undefined}
+                >
+                  {r.points != null ? `+${r.points}` : ''}
+                </span>
               </div>
             ))}
           </div>
