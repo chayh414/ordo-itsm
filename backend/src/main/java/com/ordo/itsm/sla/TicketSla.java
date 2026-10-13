@@ -77,6 +77,14 @@ public class TicketSla {
         return true;
     }
 
+    /**
+     * 시연용 — 해결 기한을 외부에서 지정한 시각으로 당긴다.
+     * 운영 플로우(start/pause/resume) 에서는 호출하지 않는다.
+     */
+    public void pullResolutionDueTo(OffsetDateTime due) {
+        this.resolutionDueAt = due;
+    }
+
     /** 보완 완료 시 재개. 정지된 시간만큼 마감을 뒤로 민다 */
     public int resume(OffsetDateTime now) {
         if (!isPaused()) {

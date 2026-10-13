@@ -7,6 +7,7 @@ import com.ordo.itsm.global.exception.ErrorCode;
 import com.ordo.itsm.global.security.AuthUser;
 import com.ordo.itsm.sla.SlaService;
 import com.ordo.itsm.sla.TicketSla;
+import com.ordo.itsm.sla.TicketSlaRepository;
 import com.ordo.itsm.tenant.Tenant;
 import com.ordo.itsm.tenant.TenantRepository;
 import com.ordo.itsm.ticket.EnvironmentType;
@@ -24,6 +25,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,6 +53,7 @@ public class IncidentDemoController {
     private final TenantRepository tenantRepository;
     private final UserRepository userRepository;
     private final TicketRepository ticketRepository;
+    private final TicketSlaRepository ticketSlaRepository;
     private final TicketNumberGenerator ticketNumberGenerator;
     private final SlaService slaService;
     private final AuditLogService auditLogService;
@@ -62,6 +65,7 @@ public class IncidentDemoController {
             TenantRepository tenantRepository,
             UserRepository userRepository,
             TicketRepository ticketRepository,
+            TicketSlaRepository ticketSlaRepository,
             TicketNumberGenerator ticketNumberGenerator,
             SlaService slaService,
             AuditLogService auditLogService,
@@ -71,6 +75,7 @@ public class IncidentDemoController {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
         this.ticketRepository = ticketRepository;
+        this.ticketSlaRepository = ticketSlaRepository;
         this.ticketNumberGenerator = ticketNumberGenerator;
         this.slaService = slaService;
         this.auditLogService = auditLogService;
@@ -138,6 +143,43 @@ public class IncidentDemoController {
                 firstResponseDueAt, sla.getResolutionDueAt());
     }
 
+    /**
+     * 시연용 — 지정 티켓의 해결 기한을 "지금 + 10분" 으로 당긴다.
+     * 다음 SlaNearNotifier 스케줄(30초 이내) 에서 SLA_NEAR 알림이 발송된다.
+     */
+    @PostMapping("/tickets/{ticketId}/sla-near")
+    @Transactional
+    public SlaAdjustResponse adjustSlaNear(
+            @AuthenticationPrincipal AuthUser user,
+            @PathVariable Long ticketId) {
+        if (!demoEnabled) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "시연용 API 가 비활성화되어 있습니다.");
+        }
+        if (user.role() != UserRole.OPS_ADMIN) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED,
+                    "SLA 마감 조정은 관리자만 호출할 수 있습니다.");
+        }
+
+        TicketSla sla = ticketSlaRepository.findByTicket_Id(ticketId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TICKET_NOT_FOUND,
+                        "해당 티켓의 SLA 가 없습니다: " + ticketId));
+
+        OffsetDateTime oldDue = sla.getResolutionDueAt();
+        OffsetDateTime newDue = OffsetDateTime.now().plusMinutes(10);
+        sla.pullResolutionDueTo(newDue);
+
+        Map<String, Object> before = Map.of("resolutionDueAt", oldDue.toString());
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("resolutionDueAt", newDue.toString());
+        after.put("source", "DEMO_SLA_NEAR");
+        auditLogService.record(AuditAction.DEMO_SLA_ADJUSTED, user,
+                sla.getTicket().getTenant().getId(), ticketId, before, after);
+
+        log.info("[DEMO] SLA 당김 ticket={} {} → {}",
+                sla.getTicket().getTicketNo(), oldDue, newDue);
+        return new SlaAdjustResponse(ticketId, sla.getTicket().getTicketNo(), newDue);
+    }
+
     public record IncidentDemoRequest(
             @NotBlank String tenantCode,
             @NotBlank String service,
@@ -148,6 +190,12 @@ public class IncidentDemoController {
             Long ticketId,
             String ticketNo,
             OffsetDateTime firstResponseDueAt,
+            OffsetDateTime resolutionDueAt
+    ) {}
+
+    public record SlaAdjustResponse(
+            Long ticketId,
+            String ticketNo,
             OffsetDateTime resolutionDueAt
     ) {}
 }
