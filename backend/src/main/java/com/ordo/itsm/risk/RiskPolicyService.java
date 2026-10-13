@@ -45,7 +45,13 @@ public class RiskPolicyService {
         RiskPolicy.Outcome outcome = RiskPolicy.score(result.riskFactors());
 
         RiskAssessment previous = repository.findByTicket_IdAndCurrentTrue(ticket.getId()).orElse(null);
-        if (previous != null) previous.markSuperseded();
+        if (previous != null) {
+            previous.markSuperseded();
+            // Hibernate 기본 flush 순서는 INSERT → UPDATE 라서, 새 current=true 가 먼저 들어가며
+            // unique index uq_risk_current (ticket_id) WHERE is_current 를 위반한다.
+            // 명시 flush 로 UPDATE 를 먼저 반영 후 새 INSERT.
+            repository.flush();
+        }
 
         String factorsJson = jsonMapper.writeValueAsString(outcome.factorPoints());
         repository.save(RiskAssessment.create(ticket, outcome.score(), outcome.grade(),

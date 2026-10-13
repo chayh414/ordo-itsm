@@ -179,6 +179,33 @@ export default function AssistantPage() {
     }
   }, [card, token])
 
+  // dev-only — __seed.html 로 pre-populated 된 상태를 1회 읽어 초기화 (캡처용).
+  // 프로덕션 번들에선 import.meta.env.DEV = false 로 tree-shaken.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const raw = sessionStorage.getItem('ordo.initState')
+    if (!raw) return
+    sessionStorage.removeItem('ordo.initState')
+    try {
+      // atob 은 binary string 반환 — 한글(UTF-8 멀티바이트)를 올바르게 복호화하려면 TextDecoder 로.
+      const bin = atob(raw)
+      const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+      const json = new TextDecoder('utf-8').decode(bytes)
+      const s = JSON.parse(json) as {
+        messages?: UiMessage[]
+        card?: AssistantCard
+        prevRisk?: { grade: RiskGrade | null; score: number | null }
+        supplementedAnswers?: Record<string, string>
+      }
+      if (s.messages) setMessages(s.messages)
+      if (s.card) setCard(s.card)
+      if (s.prevRisk) setPrevRisk(s.prevRisk)
+      if (s.supplementedAnswers) setSupplementedAnswers(s.supplementedAnswers)
+    } catch {
+      // ignore bad seed
+    }
+  }, [])
+
   // 다른 카드가 로드되면 submitted 플래그 초기화
   useEffect(() => {
     if (card?.tool === 'create_request') {
