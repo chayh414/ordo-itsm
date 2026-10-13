@@ -249,7 +249,8 @@ class TriageValidatorTest {
                 "원문 '아직 못' → AI TRUE를 무시하고 test_plan_missing 추가되어야 함");
         assertTrue(out.missingFields().contains("testPlan"),
                 "testPlan도 missingFields에 추가");
-        assertCorrectionsContain(out, "[FILL]", "test_plan_missing");
+        assertCorrectionsContain(out, "[FIX]", "test_plan_missing", "원문에 테스트 미완료");
+        assertTrue(out.confidence() < 0.7, "AI 거짓 보고 → 확신도 하향 (needsReview 트리거)");
     }
 
     @Test
@@ -273,7 +274,8 @@ class TriageValidatorTest {
         assertTrue(out.riskFactors().contains("test_plan_missing"),
                 "'테스트는 아직 못' → test_plan_missing 추가되어야 함");
         assertTrue(out.missingFields().contains("testPlan"));
-        assertCorrectionsContain(out, "[FILL]", "test_plan_missing");
+        assertCorrectionsContain(out, "[FIX]", "test_plan_missing", "원문에 테스트 미완료");
+        assertTrue(out.confidence() < 0.7, "AI 거짓 보고 → 확신도 하향");
     }
 
     @Test
@@ -584,6 +586,31 @@ class TriageValidatorTest {
         assertTrue(out.riskFactors().contains("database_schema_change"));
         assertTrue(out.riskFactors().contains("production_environment"));
         assertTrue(out.riskFactors().contains("night_work"), "22:00 야간대 유지");
+    }
+
+    @Test
+    @DisplayName("evidence 자르기 — rollback 은 '롤백 절차는 아직 없어요', 심야는 '오늘 23시' 식으로 그 요인 절만")
+    void evidenceSnippet_isClauseScoped() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "DATABASE_SCHEMA", EnvironmentType.PRODUCTION,
+                "23:00", Priority.P2, "DB_OPERATION",
+                "학생 포털 테이블", true, false,
+                List.of("rollbackPlan"),
+                List.of("database_schema_change", "production_environment",
+                        "rollback_plan_missing", "night_work"),
+                List.of(),      // AI evidence 비움 — 서버가 원문에서 뽑는지 확인
+                0.85);
+        String raw = "오늘 23시에 운영 DB 학생 포털 테이블에 컬럼 추가하려고요. 테스트는 했는데 롤백 절차는 아직 없어요.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        var byFactor = new java.util.HashMap<String, String>();
+        out.evidence().forEach(e -> byFactor.put(e.factor(), e.quote()));
+
+        assertEquals("오늘 23시", byFactor.get("night_work"),
+                "심야 근거는 시간 phrase 만 (뒤의 '에 운영 DB' 포함 금지)");
+        assertEquals("롤백 절차는 아직 없어요", byFactor.get("rollback_plan_missing"),
+                "롤백 근거는 '롤백 … 없어요' 절 전체 (앞의 '테스트는 했는데' 포함 금지)");
     }
 
     @Test

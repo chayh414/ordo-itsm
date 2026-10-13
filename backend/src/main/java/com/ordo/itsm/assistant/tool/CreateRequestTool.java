@@ -64,7 +64,7 @@ public class CreateRequestTool implements AssistantTool {
         TriageResponse triage = triageService.run(user, created.id());
 
         StringBuilder llm = new StringBuilder();
-        llm.append("임시 요청서 ").append(created.ticketNo()).append(" 을 작성했습니다. ");
+        llm.append("요청서 초안 ").append(created.ticketNo()).append(" 을 작성했습니다. ");
         if (triage.result() != null) {
             llm.append("분류: ").append(com.ordo.itsm.triage.TriageLabels.category(triage.result().category()));
             if (!triage.result().missingFields().isEmpty()) {

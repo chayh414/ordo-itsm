@@ -179,9 +179,11 @@ public class TriageValidator {
             boolean rollbackEvidence = rollbackTextEvidence || rollbackSupplied;
 
             syncChangeMissingFactor(missing, factors, corrections,
-                    "testPlan", "test_plan_missing", testEvidence, testSupplied);
+                    "testPlan", "test_plan_missing", testEvidence, testSupplied,
+                    r.testPlanProvided(), testNegated);
             syncChangeMissingFactor(missing, factors, corrections,
-                    "rollbackPlan", "rollback_plan_missing", rollbackEvidence, rollbackSupplied);
+                    "rollbackPlan", "rollback_plan_missing", rollbackEvidence, rollbackSupplied,
+                    r.rollbackPlanProvided(), rollbackNegated);
         }
 
         // 5) Rule 3 — 유형·분류별 필수 항목 자동 보완 (AUTO_FILLABLE 안의 필드만)
@@ -227,22 +229,21 @@ public class TriageValidator {
             }
         }
 
-        // 7) evidence 정리 + 보강.
-        //    AI 가 보낸 evidence 중 최종 factors 에 속한 것만 유지.
-        //    evidence 가 없는 factor 는 원문에서 패턴으로 찾아 서버가 붙여준다 (못 찾으면 비움, 지어내지 않음).
+        // 7) evidence 정리.
+        //    각 factor 마다 서버가 원문에서 패턴으로 "그 요인 절" 만 추출 (사용자가 원하는 짧은 근거).
+        //    서버 패턴이 못 찾으면 AI 가 보낸 quote 를 fallback 으로 사용 (지어내지 않음).
         java.util.LinkedHashMap<String, Evidence> byFactor = new java.util.LinkedHashMap<>();
-        if (r.evidence() != null) {
-            for (Evidence e : r.evidence()) {
-                if (e == null || !factors.contains(e.factor())) continue;
-                if (e.quote() == null || e.quote().isBlank()) continue;
-                byFactor.putIfAbsent(e.factor(), e);
-            }
-        }
         for (String f : factors) {
-            if (byFactor.containsKey(f)) continue;
             String snippet = findEvidenceSnippet(f, text);
             if (!snippet.isBlank()) {
                 byFactor.put(f, new Evidence(f, snippet));
+            } else if (r.evidence() != null) {
+                for (Evidence e : r.evidence()) {
+                    if (e != null && f.equals(e.factor()) && e.quote() != null && !e.quote().isBlank()) {
+                        byFactor.put(f, e);
+                        break;
+                    }
+                }
             }
         }
         List<Evidence> evidence = factors.stream()
@@ -321,7 +322,12 @@ public class TriageValidator {
         return catKo == null || catKo.isBlank() ? "요청" : catKo;
     }
 
-    /** factor → 원문에서 근거 스니펫 (20자 이내). 못 찾으면 빈 문자열. 지어내지 않음. */
+    /**
+     * factor → 원문 근거 스니펫. 각 요인을 "말하는 절(clause)" 만 매치한다.
+     *   - rollback/test_plan_missing: "롤백 … 없/못/아직" 식으로 부정 어구까지 포함해 끝.
+     *   - night_work: 시각/야간 표현 자체만 (뒤의 작업 대상 등은 다른 주제).
+     * 매치 자체가 이미 "절 단위" 로 끝나므로 findEvidenceSnippet 에서 어절 확장이 거의 필요 없다.
+     */
     private static final Map<String, Pattern> FACTOR_EVIDENCE_PATTERNS;
     static {
         Map<String, Pattern> m = new java.util.LinkedHashMap<>();
@@ -330,16 +336,27 @@ public class TriageValidator {
         m.put("database_permission_change", Pattern.compile("권한|GRANT|REVOKE", Pattern.CASE_INSENSITIVE));
         m.put("firewall_change", Pattern.compile("방화벽|포트|ACL", Pattern.CASE_INSENSITIVE));
         m.put("network_change", Pattern.compile("네트워크|라우팅|VLAN|라우터", Pattern.CASE_INSENSITIVE));
-        m.put("rollback_plan_missing", Pattern.compile("롤백|원복"));
-        m.put("test_plan_missing", Pattern.compile("테스트"));
-        m.put("night_work", Pattern.compile("심야|새벽|야간|밤|2[2-4]시|0?[0-5]시"));
+        // 롤백/테스트 주제어부터 다음 문장 경계(. ! ? 줄바꿈)까지. 20자 캡으로 짧게 자른다.
+        // 요인은 이미 결정된 상태에서 evidence 를 뽑으므로 "부정 어구" 체크를 여기서 다시 하지 않는다.
+        m.put("rollback_plan_missing", Pattern.compile("(?:롤백|원복)[^.!?\\n]*"));
+        m.put("test_plan_missing", Pattern.compile("테스트[^.!?\\n]*"));
+        // 심야: "오늘 23시", "밤 2시", "새벽" 등. 시간 phrase 자체만.
+        m.put("night_work", Pattern.compile(
+                "(?:오늘|내일|모레|어제)?\\s*(?:오전|오후|새벽|아침|저녁|밤|심야|야간|AM|PM)\\s*\\d{1,2}\\s*시"
+                        + "|(?:오늘|내일|모레|어제)?\\s*\\d{1,2}\\s*시"
+                        + "|심야|새벽|야간"));
         FACTOR_EVIDENCE_PATTERNS = Map.copyOf(m);
     }
 
     /**
-     * 원문에서 요인 근거 스니펫을 뽑되 단어 중간 · 조사("는데"·"가"·"를") 로 시작하지 않도록
-     * 공백·구두점 어절 경계에 맞춰 자른다.
+     * 원문에서 요인 근거 스니펫을 뽑는다.
+     *   - rollback/test/night: 패턴 자체가 "절 단위" 로 끝나므로 **매치 그대로 사용** (어절 확장 금지).
+     *   - 그 외: 단어 매치라 어절 2개까지 확장해 자연스러운 구절 생성.
+     * 조사/연결어로 시작하지 않도록 어절 경계로 왼쪽을 자른다. 20자 캡.
      */
+    private static final Set<String> CLAUSE_SCOPED_FACTORS = Set.of(
+            "rollback_plan_missing", "test_plan_missing", "night_work");
+
     private static String findEvidenceSnippet(String factor, String text) {
         if (text == null || text.isBlank()) return "";
         Pattern p = FACTOR_EVIDENCE_PATTERNS.get(factor);
@@ -351,22 +368,24 @@ public class TriageValidator {
         int s = m.start();
         while (s > 0 && !isWordBoundary(text.charAt(s - 1))) s--;
 
-        // 오른쪽: 매치 이후 어절 2개까지 늘림 (너무 길어지지 않게)
         int e = m.end();
-        int extraWords = 0;
-        boolean inWord = (e < text.length() && !isWordBoundary(text.charAt(e)));
-        while (e < text.length() && extraWords < 2) {
-            char c = text.charAt(e);
-            if (isWordBoundary(c)) {
-                if (inWord) extraWords++;
-                inWord = false;
-            } else {
-                inWord = true;
+        if (!CLAUSE_SCOPED_FACTORS.contains(factor)) {
+            // 매치 이후 어절 2개까지 늘림 (너무 길어지지 않게)
+            int extraWords = 0;
+            boolean inWord = (e < text.length() && !isWordBoundary(text.charAt(e)));
+            while (e < text.length() && extraWords < 2) {
+                char c = text.charAt(e);
+                if (isWordBoundary(c)) {
+                    if (inWord) extraWords++;
+                    inWord = false;
+                } else {
+                    inWord = true;
+                }
+                e++;
             }
-            e++;
+            // 어절 중간에서 끝났으면 그 어절 끝까지 포함
+            while (e < text.length() && !isWordBoundary(text.charAt(e))) e++;
         }
-        // 어절 중간에서 끝났으면 그 어절 끝까지 포함
-        while (e < text.length() && !isWordBoundary(text.charAt(e))) e++;
 
         String snippet = text.substring(s, e).replaceAll("[\\n\\r]+", " ").trim();
         if (snippet.length() > 20) {
@@ -384,12 +403,14 @@ public class TriageValidator {
     /**
      * CHANGE 요청에서 testPlan/rollbackPlan 의 missing·factor 를 한 곳에서 결정.
      *   - evidence=true  : missing·factor 둘 다 제거 (supplements 로 해소되면 [SUP], 원문/AI 근거면 [FIX])
-     *   - evidence=false : missing·factor 둘 다 추가 ([FILL], 확신도 하향 트리거 아님)
-     *   이렇게 두 리스트의 rollback/test 가 "따로 놀" 수 없다.
+     *   - evidence=false, AI 가 Provided=TRUE 라고 알렸는데 원문엔 부정 표현 → [FIX] (AI 거짓 보고, 확신도 하향 트리거)
+     *   - evidence=false, 그 외 (AI 가 언급 안 했거나 자인) → [FILL]
+     *   어느 경로든 missing·factor 가 "따로 놀" 수 없다.
      */
     private static void syncChangeMissingFactor(
             Set<String> missing, Set<String> factors, List<String> corrections,
-            String missingKey, String factorKey, boolean evidence, boolean supplied) {
+            String missingKey, String factorKey, boolean evidence, boolean supplied,
+            Boolean aiProvided, boolean textNegated) {
         if (evidence) {
             boolean removedMissing = missing.remove(missingKey);
             boolean removedFactor = factors.remove(factorKey);
@@ -402,7 +423,13 @@ public class TriageValidator {
             boolean addedMissing = missing.add(missingKey);
             boolean addedFactor = factors.add(factorKey);
             if (addedMissing || addedFactor) {
-                corrections.add("[FILL] " + missingKey + "·" + factorKey + " 보강 (CHANGE 요청에 명시 없음)");
+                // AI 가 TRUE 라고 알렸는데 원문이 부정 → [FIX] (hasFix → 확신도 하향 → needsReview)
+                boolean aiFalseReport = Boolean.TRUE.equals(aiProvided) && textNegated;
+                String prefix = aiFalseReport ? "[FIX]" : "[FILL]";
+                String reason = aiFalseReport
+                        ? "AI 는 제공됨으로 보고, 원문에 테스트 미완료" + (missingKey.equals("rollbackPlan") ? " 또는 롤백 계획 없음" : "")
+                        : "CHANGE 요청에 명시 없음";
+                corrections.add(prefix + " " + missingKey + "·" + factorKey + " 보강 (" + reason + ")");
             }
         }
     }

@@ -22,7 +22,9 @@ import com.ordo.itsm.user.User;
 import com.ordo.itsm.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -194,8 +196,10 @@ public class TicketService {
     /**
      * 목록: 접근 범위 안에서만 + DRAFT 가시성 규칙 적용.
      * DRAFT 는 작성자 본인에게만 보이고, 그 외 사용자(같은 테넌트 포함)에게는 숨긴다.
+     * 호출자가 정렬을 지정하지 않으면 createdAt DESC 로 fallback — 최신 요청이 페이지 밖으로 밀리는 걸 막는다.
      */
     public PageResponse<TicketSummaryResponse> list(AuthUser user, TicketStatus status, Pageable pageable) {
+        pageable = withDefaultSort(pageable);
         TenantScope scope = tenantAccessService.scopeOf(user);
         if (scope.isEmpty()) {
             return PageResponse.empty(pageable);
@@ -228,17 +232,28 @@ public class TicketService {
      * 그 외 역할은 호출되지 않는다 (dispatcher 가 미리 걸러줌). 호출되면 500.
      */
     public PageResponse<TicketSummaryResponse> listMine(AuthUser user, TicketStatus status, Pageable pageable) {
+        Pageable sorted = withDefaultSort(pageable);
         return switch (user.role()) {
             case REQUESTER -> {
                 Page<Ticket> page = (status == null)
-                        ? ticketRepository.findByRequester_Id(user.userId(), pageable)
-                        : ticketRepository.findByRequester_IdAndStatus(user.userId(), status, pageable);
+                        ? ticketRepository.findByRequester_Id(user.userId(), sorted)
+                        : ticketRepository.findByRequester_IdAndStatus(user.userId(), status, sorted);
                 yield mapToSummaryPage(page);
             }
-            case CUSTOMER_ADMIN -> list(user, status, pageable);
+            case CUSTOMER_ADMIN -> list(user, status, sorted);
             default -> throw new BusinessException(ErrorCode.ACCESS_DENIED,
                     "listMine 은 요청자/고객사 관리자 전용입니다.");
         };
+    }
+
+    /**
+     * 호출자가 정렬을 지정하지 않은 경우 createdAt DESC 로 보정.
+     * 호출자가 명시적으로 정렬을 넘기면 그 설정을 존중한다.
+     */
+    private static Pageable withDefaultSort(Pageable pageable) {
+        if (pageable.getSort().isSorted()) return pageable;
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
     private PageResponse<TicketSummaryResponse> mapToSummaryPage(Page<Ticket> page) {

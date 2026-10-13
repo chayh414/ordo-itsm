@@ -195,6 +195,8 @@ public class AssistantService {
                     "(?<![A-Za-z0-9_])" + java.util.regex.Pattern.quote(code) + "(?![A-Za-z0-9_])",
                     java.util.regex.Matcher.quoteReplacement(label));
         }
+        // 용어 통일 (프롬프트 미건드림, reply 측 안전차)
+        out = out.replace("임시 요청서", "요청서 초안");
         return out;
     }
 
