@@ -143,7 +143,7 @@ export default function ChatPanel({ messages, loading, error, onSend, onRetry }:
           <button
             type="submit"
             disabled={loading || !draft.trim()}
-            className="h-11 px-5 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            className="h-11 px-5 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
             보내기
           </button>

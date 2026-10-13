@@ -16,7 +16,6 @@ import com.ordo.itsm.tenant.TenantRepository;
 import com.ordo.itsm.tenant.TenantScope;
 import com.ordo.itsm.ticket.dto.CreateTicketRequest;
 import com.ordo.itsm.ticket.dto.TicketCreatedResponse;
-import com.ordo.itsm.notification.IncidentFirstResponsePolicy;
 import com.ordo.itsm.ticket.dto.TicketDetailResponse;
 import com.ordo.itsm.ticket.dto.TicketSummaryResponse;
 import com.ordo.itsm.user.User;
@@ -50,7 +49,6 @@ public class TicketService {
     private final TicketSlaRepository ticketSlaRepository;
     private final AuditLogService auditLogService;
     private final JsonMapper jsonMapper;
-    private final IncidentFirstResponsePolicy incidentFirstResponsePolicy;
 
     /** 요청 등록: 원문 저장 → 티켓번호 발급 → SLA 시작 → 감사 로그 (직통 접수) */
     @Transactional
@@ -291,11 +289,7 @@ public class TicketService {
         }
 
         TicketSla sla = ticketSlaRepository.findByTicket_Id(ticketId).orElse(null);
-        java.time.OffsetDateTime firstResponseDueAt =
-                ticket.getRequestType() == RequestType.INCIDENT
-                        ? incidentFirstResponsePolicy.firstResponseDueAt(ticket.getCreatedAt())
-                        : null;
-        return TicketDetailResponse.from(ticket, sla, parseDetails(ticket.getDetailJson()), firstResponseDueAt);
+        return TicketDetailResponse.from(ticket, sla, parseDetails(ticket.getDetailJson()));
     }
 
     @SuppressWarnings("unchecked")

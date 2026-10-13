@@ -194,7 +194,7 @@ export default function CreateDoc({
               type="button"
               onClick={onSubmit}
               disabled={submitting || submitted}
-              className="h-11 px-6 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-11 px-6 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {submitted ? '접수됨' : submitting ? '접수 중…' : '접수하기'}
             </button>
@@ -315,7 +315,7 @@ function SupplementItem({
           type="button"
           onClick={save}
           disabled={disabled || busy || !draft.trim()}
-          className="h-10 px-4 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+          className="h-10 px-4 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? '다시 분석하고 있습니다…' : '답변 저장'}
         </button>

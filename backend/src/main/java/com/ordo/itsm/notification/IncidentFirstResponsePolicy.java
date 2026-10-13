@@ -1,37 +1,27 @@
 package com.ordo.itsm.notification;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.ordo.itsm.sla.TicketSla;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
 
 /**
- * 장애 1차 통보 기한 계산.
- * 토스트와 (추후) 백오피스 상세에서 같은 함수를 쓰기 위한 공용 유틸.
- * 실제 값은 시스원 SLA 정책에 맞춰 설정 (yml: ordo.sla.incident-first-response-minutes).
+ * 장애 "1차 통보 기한" 계산.
+ * SLA 응답 기한(responseDueAt) 과 동일한 지표로 통합 — 토스트·장애 상세·백오피스 SLA 가 전부 같은 값을 쓴다.
+ * (별도 설정값은 두지 않는다. SLA 정책이 유일한 출처.)
  */
 @Component
 public class IncidentFirstResponsePolicy {
 
-    private final int firstResponseMinutes;
-
-    public IncidentFirstResponsePolicy(
-            @Value("${ordo.sla.incident-first-response-minutes:15}") int firstResponseMinutes) {
-        this.firstResponseMinutes = firstResponseMinutes;
-    }
-
-    public int firstResponseMinutes() {
-        return firstResponseMinutes;
-    }
-
-    /** 장애 접수 시각 + 설정값(분) */
-    public OffsetDateTime firstResponseDueAt(OffsetDateTime createdAt) {
-        return createdAt.plusMinutes(firstResponseMinutes);
+    /** SLA 가 시작된 티켓의 1차 통보 기한. SLA 응답 기한과 같다. */
+    public OffsetDateTime firstResponseDueAt(TicketSla sla) {
+        return sla == null ? null : sla.getResponseDueAt();
     }
 
     /** 지금 기준 남은 시간. 음수면 이미 지남. */
-    public Duration remaining(OffsetDateTime createdAt, OffsetDateTime now) {
-        return Duration.between(now, firstResponseDueAt(createdAt));
+    public Duration remaining(TicketSla sla, OffsetDateTime now) {
+        OffsetDateTime due = firstResponseDueAt(sla);
+        return due == null ? Duration.ZERO : Duration.between(now, due);
     }
 }

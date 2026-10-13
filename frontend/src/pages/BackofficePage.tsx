@@ -5,6 +5,7 @@ import ToastContainer from '../components/app/ToastContainer'
 import { useAuth } from '../lib/auth'
 import { api } from '../lib/api'
 import { usePageTitle } from '../lib/usePageTitle'
+import { formatCorrection, label } from '../lib/i18n'
 import type {
   AuditEntry,
   PageResponse,
@@ -19,51 +20,51 @@ import type {
  * 요청자(REQUESTER)·고객사 관리자(CUSTOMER_ADMIN) 는 접근 시 /app 리다이렉트
  * (서버도 BackofficeController 에서 ACCESS_DENIED 로 거부함).
  *
- * 승인·상태 변경 버튼은 없음. 상단에 "시스원 백오피스를 대신하는 시연용 화면" 안내 한 줄.
- * 디자인은 design-guide §4~5 — 가는 선과 여백, 그림자/배지/이모지/포인트색 없음.
+ * design-guide §3~5 — 가는 선·여백, 그림자/배지/이모지 없음.
+ * 포인트 색(accent) 은 선택된 행 왼쪽 선·링크·버튼에만.
  */
 
 const PROVIDER_ROLES = new Set(['OPERATOR', 'APPROVER', 'OPS_ADMIN'])
-const STATUS_KO: Record<string, string> = {
-  DRAFT: '요청서 초안', SUBMITTED: '접수됨', TRIAGED: '분류 완료', INFO_REQUIRED: '보완 대기',
-  RISK_REVIEWED: '위험도 검토 완료', PENDING_APPROVAL: '승인 대기', APPROVED: '승인됨',
-  REJECTED: '반려됨', ASSIGNED: '담당자 배정', SCHEDULED: '작업 예정', IN_PROGRESS: '처리 중',
-  RESOLVED: '해결됨', COMPLETED: '완료', VERIFIED: '검증 완료', CLOSED: '종료', CANCELLED: '취소됨',
-}
-const REQUEST_TYPE_KO: Record<string, string> = {
-  INCIDENT: '장애', SERVICE_REQUEST: '일반 요청', CHANGE: '변경 요청', INQUIRY: '문의',
-}
-const RISK_GRADE_KO: Record<string, string> = {
-  LOW: '낮음', MEDIUM: '보통', HIGH: '높음', CRITICAL: '매우 높음',
-}
-const FACTOR_KO: Record<string, string> = {
-  production_environment: '운영 환경',
-  database_schema_change: 'DB 스키마 변경',
-  database_permission_change: 'DB 권한 변경',
-  firewall_change: '방화벽 변경',
-  network_change: '네트워크 변경',
-  rollback_plan_missing: '롤백 계획 없음',
-  test_plan_missing: '테스트 계획 없음',
-  night_work: '심야 작업',
-}
+
 const ACTION_KO: Record<string, string> = {
   TICKET_CREATED: '요청 생성', AI_TRIAGED: 'AI 분석 완료', AI_TRIAGE_FAILED: 'AI 분석 실패',
+  TRIAGE_CONFIRMED: '분류 확정', TICKET_UPDATED: '요청 수정',
   INFO_SUPPLEMENTED: '보완 저장', RISK_ASSESSED: '위험도 산정', RISK_REASSESSED: '위험도 재산정',
-  STATUS_CHANGED: '상태 변경', SLA_PAUSED: 'SLA 정지', SLA_RESUMED: 'SLA 재개',
-  SLA_NEAR_NOTIFIED: 'SLA 임박 알림', EVENT_RECEIVED: '이벤트 수신 (모니터링)',
-  DEMO_SLA_ADJUSTED: '시연용 SLA 조정',
-  ACCESS_DENIED: '접근 거부', ASSISTANT_TOOL_CALLED: '어시스턴트 도구 호출',
+  TICKET_ASSIGNED: '담당자 배정', STATUS_CHANGED: '상태 변경',
+  SLA_PAUSED: 'SLA 정지', SLA_RESUMED: 'SLA 재개',
+  APPROVAL_REQUESTED: '승인 요청', APPROVED: '승인됨', REJECTED: '반려됨',
+  COMMENT_ADDED: '의견 추가', LOGIN_FAILED: '로그인 실패', ACCESS_DENIED: '접근 거부',
+  ASSISTANT_TOOL_CALLED: '어시스턴트 도구 호출', EVENT_RECEIVED: '이벤트 수신 (모니터링)',
+  SLA_NEAR_NOTIFIED: 'SLA 임박 알림', DEMO_SLA_ADJUSTED: '시연용 SLA 조정',
 }
 
 function fmt(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
   const yyyy = d.getFullYear()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   const hh = String(d.getHours()).padStart(2, '0')
   const mi = String(d.getMinutes()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`
+}
+
+/** AI 가 뽑은 요약(title) 우선. 없으면 subject, 그래도 없으면 원문 앞부분. */
+function displayTitle(ticket: { subject: string; originalRequest?: string },
+                      triage: TriageResponse | null): string {
+  const t = triage?.result?.title
+  if (t && t.trim()) return t.trim()
+  if (ticket.subject && ticket.subject.trim()) return ticket.subject.trim()
+  const raw = ticket.originalRequest ?? ''
+  return raw.length > 40 ? raw.slice(0, 40) + '…' : raw
+}
+
+function listTitle(t: TicketSummaryResponse): string {
+  // 목록 응답엔 triage.title 이 없어 subject 사용 — subject 는 CreateRequestTool 이
+  // 원문 앞 100자로 설정하므로, 60자로 추가로 자른다.
+  const s = t.subject ?? ''
+  return s.length > 60 ? s.slice(0, 60) + '…' : s
 }
 
 export default function BackofficePage() {
@@ -83,7 +84,6 @@ export default function BackofficePage() {
     [user],
   )
 
-  // 목록 로드
   useEffect(() => {
     if (!token || !isProvider) return
     setLoadingList(true)
@@ -93,7 +93,6 @@ export default function BackofficePage() {
       .finally(() => setLoadingList(false))
   }, [token, isProvider])
 
-  // 상세 로드
   useEffect(() => {
     if (!token || !selectedId) {
       setDetail(null); setTriage(null); setRiskHistory([]); setAudit([])
@@ -120,6 +119,8 @@ export default function BackofficePage() {
   if (!token || !user) return <Navigate to="/login" replace />
   if (!isProvider) return <Navigate to="/app" replace />
 
+  const isIncident = detail?.requestType === 'INCIDENT'
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <TopBar />
@@ -138,35 +139,40 @@ export default function BackofficePage() {
             <div className="px-10 py-6 text-[14px] text-mute">불러오는 중…</div>
           )}
           <ul>
-            {tickets.map(t => (
-              <li key={t.id} className="border-b border-line">
-                <button type="button"
-                        onClick={() => setSelectedId(t.id)}
-                        className={
-                          'w-full text-left px-10 py-4 hover:bg-soft transition-colors ' +
-                          (selectedId === t.id ? 'bg-soft' : '')
-                        }>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-[13px] text-mute tabular-nums">{t.ticketNo} · {t.tenantName}</div>
-                      <div className="text-[15px] text-ink mt-1 truncate">{t.subject}</div>
+            {tickets.map(t => {
+              const selected = selectedId === t.id
+              return (
+                <li key={t.id} className="border-b border-line">
+                  <button type="button"
+                          onClick={() => setSelectedId(t.id)}
+                          className={
+                            'w-full text-left px-10 py-4 border-l-4 transition-colors hover:bg-soft ' +
+                            (selected
+                              ? 'border-l-accent bg-soft'
+                              : 'border-l-transparent')
+                          }>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="text-[13px] text-mute tabular-nums">{t.ticketNo} · {t.tenantName}</div>
+                        <div className="text-[15px] text-ink mt-1 truncate">{listTitle(t)}</div>
+                      </div>
+                      <div className="text-[13px] text-mute whitespace-nowrap">
+                        {label.requestType(t.requestType) || '분류 전'}
+                      </div>
                     </div>
-                    <div className="text-[13px] text-mute whitespace-nowrap">
-                      {t.requestType ? REQUEST_TYPE_KO[t.requestType] ?? t.requestType : '분류 전'}
+                    <div className="mt-2 flex items-center gap-5 text-[13px] text-mute">
+                      <span>{label.status(t.status)}</span>
+                      {t.riskGrade && (
+                        <span>위험도 <span className="text-ink">{label.riskGrade(t.riskGrade)}</span></span>
+                      )}
+                      {t.sla && (
+                        <span>마감 <span className="tabular-nums">{fmt(t.sla.resolutionDueAt)}</span></span>
+                      )}
                     </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-5 text-[13px] text-mute">
-                    <span>{STATUS_KO[t.status] ?? t.status}</span>
-                    {t.riskGrade && (
-                      <span>위험도 <span className="text-ink">{RISK_GRADE_KO[t.riskGrade] ?? t.riskGrade}</span></span>
-                    )}
-                    {t.sla && (
-                      <span>마감 <span className="tabular-nums">{fmt(t.sla.resolutionDueAt)}</span></span>
-                    )}
-                  </div>
-                </button>
-              </li>
-            ))}
+                  </button>
+                </li>
+              )
+            })}
             {!loadingList && tickets.length === 0 && (
               <li className="px-10 py-10 text-[14px] text-mute">조건에 해당하는 요청이 없습니다.</li>
             )}
@@ -183,25 +189,25 @@ export default function BackofficePage() {
           {detail && (
             <div className="px-10 py-8 max-w-[840px]">
               <div className="text-[13px] text-mute tabular-nums">
-                {detail.ticketNo} · {detail.tenant.name} · {STATUS_KO[detail.status] ?? detail.status}
+                {detail.ticketNo} · {detail.tenant.name} · {label.status(detail.status)}
               </div>
               <h1 className="mt-2 text-[26px] font-bold tracking-[-0.01em] text-ink">
-                {detail.subject}
+                {displayTitle(detail, triage)}
               </h1>
               <div className="mt-1 text-[13px] text-mute">
                 요청자 {detail.requester.name} · 생성 <span className="tabular-nums">{fmt(detail.createdAt)}</span>
               </div>
 
               <Section title="요청 원문 (마스킹 적용)">
-                <pre className="whitespace-pre-wrap text-[14px] text-body leading-[1.7]">
+                <div className="whitespace-pre-wrap text-[14px] text-body leading-[1.7] font-sans">
                   {detail.originalRequest}
-                </pre>
+                </div>
               </Section>
 
-              <Section title="AI 추출 결과">
-                <KeyRow k="유형" v={detail.requestType ? REQUEST_TYPE_KO[detail.requestType] ?? detail.requestType : '—'} />
-                <KeyRow k="분류" v={detail.category ?? '—'} />
-                <KeyRow k="환경" v={detail.environment ?? '—'} />
+              <Section title={isIncident ? '이벤트 정보' : 'AI 추출 결과'}>
+                <KeyRow k="유형" v={label.requestType(detail.requestType)} />
+                <KeyRow k="분류" v={label.category(detail.category)} />
+                <KeyRow k="환경" v={label.environment(detail.environment)} />
                 <KeyRow k="영향 서비스" v={detail.affectedService ?? '—'} />
                 {triage?.result?.title && <KeyRow k="제목(요약)" v={triage.result.title} />}
                 {triage?.result?.testPlanProvided !== null && triage?.result?.testPlanProvided !== undefined && (
@@ -211,7 +217,7 @@ export default function BackofficePage() {
                   <KeyRow k="롤백 계획" v={triage.result.rollbackPlanProvided ? '있음' : '없음'} />
                 )}
                 {triage?.result?.missingFields && triage.result.missingFields.length > 0 && (
-                  <KeyRow k="확인 필요" v={triage.result.missingFields.join(', ')} />
+                  <KeyRow k="확인 필요" v={triage.result.missingFields.map(label.field).join(', ')} />
                 )}
                 {triage?.confidence !== null && triage?.confidence !== undefined && (
                   <KeyRow k="확신도" v={(triage.confidence * 100).toFixed(0) + '%'} />
@@ -220,16 +226,18 @@ export default function BackofficePage() {
 
               {triage?.result?.corrections && triage.result.corrections.length > 0 && (
                 <Section title="자동 보정 기록">
-                  <ul className="text-[14px] text-body leading-[1.8] tabular-nums">
+                  <ul className="text-[14px] text-body leading-[1.8]">
                     {triage.result.corrections.map((c, i) => (
-                      <li key={i} className="border-t border-line py-2">{c}</li>
+                      <li key={i} className="border-t border-line py-2">{formatCorrection(c)}</li>
                     ))}
                   </ul>
                 </Section>
               )}
 
               <Section title="위험 평가 이력">
-                {riskHistory.length === 0 ? (
+                {isIncident ? (
+                  <p className="text-[14px] text-mute">장애는 위험 점수 대상이 아닙니다.</p>
+                ) : riskHistory.length === 0 ? (
                   <p className="text-[14px] text-mute">위험도 산정 기록이 없습니다.</p>
                 ) : (
                   <ul>
@@ -238,7 +246,7 @@ export default function BackofficePage() {
                         <div className="flex items-center justify-between">
                           <div>
                             <span className="tabular-nums text-ink text-[15px]">{h.score}점</span>
-                            {h.grade && <span className="ml-2 text-[13px] text-mute">({RISK_GRADE_KO[h.grade] ?? h.grade})</span>}
+                            {h.grade && <span className="ml-2 text-[13px] text-mute">({label.riskGrade(h.grade)})</span>}
                             {i === 0 && h.current && <span className="ml-2 text-[13px] text-mute">· 최신</span>}
                           </div>
                           <span className="text-[13px] text-mute tabular-nums">{fmt(h.createdAt)}</span>
@@ -246,7 +254,7 @@ export default function BackofficePage() {
                         {Object.keys(h.factorPoints).length > 0 && (
                           <div className="mt-1 text-[13px] text-mute">
                             {Object.entries(h.factorPoints)
-                              .map(([k, v]) => `${FACTOR_KO[k] ?? k} +${v}`).join(' · ')}
+                              .map(([k, v]) => `${label.riskFactor(k)} +${v}`).join(' · ')}
                           </div>
                         )}
                       </li>
@@ -259,12 +267,9 @@ export default function BackofficePage() {
                 {detail.sla ? (
                   <>
                     <KeyRow k="기준" v={detail.sla.basis} />
-                    <KeyRow k="응답 기한" v={fmt(detail.sla.responseDueAt)} />
+                    <KeyRow k={isIncident ? '1차 통보 기한 (응답)' : '응답 기한'} v={fmt(detail.sla.responseDueAt)} />
                     <KeyRow k="해결 기한" v={fmt(detail.sla.resolutionDueAt)} />
                     <KeyRow k="정지 상태" v={detail.sla.paused ? `정지 중 (누계 ${detail.sla.pausedTotalMinutes}분)` : '진행 중'} />
-                    {detail.firstResponseDueAt && (
-                      <KeyRow k="1차 통보 기한" v={fmt(detail.firstResponseDueAt)} />
-                    )}
                   </>
                 ) : (
                   <p className="text-[14px] text-mute">SLA 가 시작되지 않았습니다 (초안 또는 접수 전).</p>

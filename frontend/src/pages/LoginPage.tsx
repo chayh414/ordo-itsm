@@ -81,7 +81,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="이메일 주소"
-              className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
+              className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-accent focus:outline-none transition-colors"
             />
           </label>
 
@@ -93,7 +93,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder=""
-              className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
+              className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-accent focus:outline-none transition-colors"
             />
           </label>
 
@@ -106,7 +106,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy || !email || !password}
-            className="w-full h-11 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full h-11 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {busy ? '로그인 중…' : '로그인'}
           </button>

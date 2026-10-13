@@ -129,13 +129,33 @@ export function formatRequestedTime(hhmm: string | null | undefined): string {
   return `오늘 ${hhmm}`
 }
 
+const CORRECTION_PREFIX: Record<string, string> = {
+  '[FIX]': '교정',
+  '[FILL]': '보완',
+  '[SUP]': '보완',
+  '[NORM]': '정리',
+}
+
+function kindOf(raw: string): string {
+  for (const key of Object.keys(CORRECTION_PREFIX)) {
+    if (raw.startsWith(key)) return CORRECTION_PREFIX[key]
+  }
+  return ''
+}
+
 /**
  * 백엔드 TriageValidator 가 만든 보정 로그 ("[FIX] riskFactor+... (reason)") 를
- * 화면 노출용 사람 말로 변환. 접두사([FIX]/[FILL]/[NORM]/[SUP]) 와 영어 키를 숨긴다.
- * 매칭 실패 시 원문 그대로 돌려주어 안전 장치.
+ * 화면 노출용 사람 말로 변환. "교정/보완/정리" 접두어는 유지하고 영어 키만 숨긴다.
+ * 매칭 실패 시 원문에서 영문 코드만 제거해 돌려준다.
  */
 export function formatCorrection(raw: string): string {
   if (!raw) return ''
+  const kind = kindOf(raw)
+  const body = formatCorrectionBody(raw)
+  return kind ? `${kind} · ${body}` : body
+}
+
+function formatCorrectionBody(raw: string): string {
 
   // 1) requestType 보정
   let m = raw.match(/^\[FIX\]\s*requestType=([A-Z_]+)→([A-Z_]+)/)
@@ -187,6 +207,27 @@ export function formatCorrection(raw: string): string {
   m = raw.match(/^\[SUP\]\s*([a-zA-Z]+)\s*고객 보완/)
   if (m) {
     return `'${label.field(m[1])}' 를 고객이 보완했어요`
+  }
+
+  // 8) rollback/test 동기화 — "해소"
+  m = raw.match(/^\[(FIX|SUP)\]\s*(rollbackPlan|testPlan)·(rollback_plan_missing|test_plan_missing)\s*해소/)
+  if (m) {
+    const reason = m[1] === 'SUP' ? '고객 보완으로' : '원문·AI 근거로'
+    return `${reason} '${label.field(m[2])}' 와 '${label.riskFactor(m[3])}' 요인을 해소했어요`
+  }
+
+  // 9) rollback/test 동기화 — "보강"
+  m = raw.match(/^\[(FIX|FILL)\]\s*(rollbackPlan|testPlan)·(rollback_plan_missing|test_plan_missing)\s*보강/)
+  if (m) {
+    const reason = m[1] === 'FIX'
+            ? 'AI 는 제공됐다고 보고했지만 원문에 부정 표현이 있어'
+            : 'CHANGE 요청에 명시가 없어'
+    return `${reason} '${label.field(m[2])}' 확인과 '${label.riskFactor(m[3])}' 요인을 추가했어요`
+  }
+
+  // 10) 방화벽·네트워크 IP 2개로 재질문 해소
+  if (/^\[FIX\]\s*sourceIp·destinationIp missing 해소/.test(raw)) {
+    return '원문에 IP 가 2개 이상 있어 출발지·목적지 확인은 다시 묻지 않아요'
   }
 
   // 매칭 실패 — 접두사만 떼고 돌려줌

@@ -58,7 +58,7 @@ export default function NotificationToast({ event, onDismiss, onOpen }: Props) {
   }
 
   return (
-    <div className="w-[320px] border border-ink bg-bg px-4 py-3"
+    <div className="w-[320px] border border-ink border-l-4 border-l-accent bg-bg px-4 py-3"
          role="status" aria-live="polite" data-testid="notification-toast">
       <div className="flex items-start justify-between gap-2">
         <div className="text-[15px] font-semibold text-ink">{headlineOf(event)}</div>
@@ -73,7 +73,7 @@ export default function NotificationToast({ event, onDismiss, onOpen }: Props) {
           <span className="tabular-nums text-ink">{formatRemaining(remainingMs)}</span>
         </span>
         <a href="#" onClick={handleOpen}
-           className="underline underline-offset-2 text-ink">확인</a>
+           className="underline underline-offset-2 text-accent hover:text-accent-hover">확인</a>
       </div>
     </div>
   )

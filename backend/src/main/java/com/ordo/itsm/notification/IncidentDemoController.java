@@ -137,7 +137,7 @@ public class IncidentDemoController {
         after.put("source", "DEMO_INCIDENT");
         auditLogService.record(AuditAction.EVENT_RECEIVED, user, tenant.getId(), ticket.getId(), null, after);
 
-        OffsetDateTime firstResponseDueAt = incidentPolicy.firstResponseDueAt(ticket.getCreatedAt());
+        OffsetDateTime firstResponseDueAt = incidentPolicy.firstResponseDueAt(sla);
         NotificationEvent event = new NotificationEvent(
                 NotificationEvent.Type.INCIDENT_CREATED,
                 ticket.getId(), ticket.getTicketNo(),

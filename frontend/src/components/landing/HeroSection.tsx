@@ -33,7 +33,7 @@ export default function HeroSection() {
             </p>
             <Link
               to="/login"
-              className="inline-flex items-center h-12 px-6 mt-7 bg-ink text-white text-base font-semibold"
+              className="inline-flex items-center h-12 px-6 mt-7 bg-accent hover:bg-accent-hover transition-colors text-white text-base font-semibold"
             >
               시작하기
             </Link>

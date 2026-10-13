@@ -43,7 +43,7 @@ export default function TopBar() {
               to={n.to}
               end={n.to === '/app'}
               className={({ isActive }) =>
-                isActive ? 'text-ink font-semibold' : 'hover:text-ink transition-colors'
+                isActive ? 'text-accent font-semibold' : 'hover:text-ink transition-colors'
               }
             >
               {n.label}
