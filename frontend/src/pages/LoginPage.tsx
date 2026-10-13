@@ -64,16 +64,16 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
-      <div className="w-full max-w-[380px]">
+      <div className="w-full max-w-[23.75rem]">
         <Link to="/" className="block text-sm text-mute mb-10 underline underline-offset-4">
           ← 홈
         </Link>
 
-        <h1 className="text-[28px] font-bold tracking-[-0.02em] mb-10">로그인</h1>
+        <h1 className="text-[1.75rem] font-bold tracking-[-0.02em] mb-10">로그인</h1>
 
         <form onSubmit={submit} className="space-y-7">
           <label className="block">
-            <span className="block text-[13px] text-mute mb-2">이메일</span>
+            <span className="block text-[0.8125rem] text-mute mb-2">이메일</span>
             <input
               type="email"
               required
@@ -81,24 +81,24 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="requester@a-univ.demo"
-              className="w-full border-b border-line pb-2 text-[15px] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
+              className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
             />
           </label>
 
           <label className="block">
-            <span className="block text-[13px] text-mute mb-2">비밀번호</span>
+            <span className="block text-[0.8125rem] text-mute mb-2">비밀번호</span>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password123!"
-              className="w-full border-b border-line pb-2 text-[15px] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
+              className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
             />
           </label>
 
           {error && (
-            <p className="text-[14px]" style={{ color: 'var(--color-risk)' }}>
+            <p className="text-[0.875rem]" style={{ color: 'var(--color-risk)' }}>
               {error}
             </p>
           )}
@@ -106,14 +106,14 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy || !email || !password}
-            className="w-full h-11 bg-ink text-white text-[15px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full h-11 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {busy ? '로그인 중…' : '로그인'}
           </button>
         </form>
 
         <div className="mt-14">
-          <p className="text-[13px] text-mute mb-3">시연 계정 바로 로그인</p>
+          <p className="text-[0.8125rem] text-mute mb-3">시연 계정 바로 로그인</p>
           <ul className="border-t border-line">
             {DEMO_ACCOUNTS.map((a) => (
               <li key={a.email} className="border-b border-line">
@@ -121,14 +121,14 @@ export default function LoginPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => quickLogin(a.email)}
-                  className="w-full text-left py-3 text-[14px] hover:pl-2 transition-[padding] duration-300 disabled:opacity-40"
+                  className="w-full text-left py-3 text-[0.875rem] hover:pl-2 transition-[padding] duration-300 disabled:opacity-40"
                 >
                   {a.label}
                 </button>
               </li>
             ))}
           </ul>
-          <p className="text-[12px] text-faint mt-3">모든 시연 계정 비밀번호: Password123!</p>
+          <p className="text-[0.75rem] text-faint mt-3">모든 시연 계정 비밀번호: Password123!</p>
         </div>
       </div>
     </div>

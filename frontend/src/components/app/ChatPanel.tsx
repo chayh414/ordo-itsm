@@ -25,9 +25,9 @@ interface Props {
   onRetry(): void
 }
 
-const INPUT_LINE_HEIGHT = 24   // text-[15px] × 1.6 ≈ 24px (한 줄 높이, textarea sizing 기준)
+// 상수들은 CSS px 로 계산해야 scrollHeight 비교가 정확하다. 글자 크기 토글에 따라 html font-size 가
+// 바뀌면 1rem 의 실제 px 값이 달라지므로 getComputedStyle 로 매번 계산한다 (useLayoutEffect 안에서).
 const INPUT_MAX_LINES = 6
-const INPUT_VERT_PADDING = 20  // py-2.5 상·하 합
 
 export default function ChatPanel({ messages, loading, error, onSend, onRetry }: Props) {
   const [draft, setDraft] = useState('')
@@ -41,12 +41,16 @@ export default function ChatPanel({ messages, loading, error, onSend, onRetry }:
     el.scrollTop = el.scrollHeight
   }, [messages, loading])
 
-  // draft 가 바뀔 때마다 textarea 높이 재계산 (scrollHeight 기반, 6줄 상한)
+  // draft 가 바뀔 때마다 textarea 높이 재계산 (scrollHeight 기반, 6줄 상한).
+  // 상한은 line-height 를 getComputedStyle 로 읽어서 계산 → 글자 크기 토글 시 자동 반영.
   useLayoutEffect(() => {
     const el = inputRef.current
     if (!el) return
     el.style.height = 'auto'
-    const maxHeight = INPUT_LINE_HEIGHT * INPUT_MAX_LINES + INPUT_VERT_PADDING
+    const cs = getComputedStyle(el)
+    const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.6
+    const vertPadding = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)
+    const maxHeight = lineHeight * INPUT_MAX_LINES + vertPadding
     el.style.height = Math.min(el.scrollHeight, maxHeight) + 'px'
     el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
   }, [draft])
@@ -81,42 +85,42 @@ export default function ChatPanel({ messages, loading, error, onSend, onRetry }:
   return (
     <section className="flex flex-col border-r border-line min-h-0">
       <div ref={threadRef} className="flex-1 overflow-y-auto px-10 pt-9 pb-6">
-        <div className="text-[13px] text-faint mb-6">{todayLabel()}</div>
+        <div className="text-[0.8125rem] text-faint mb-6">{todayLabel()}</div>
 
         {messages.map((m, i) =>
           m.role === 'user' ? (
             <div
               key={i}
-              className="ml-10 mb-6 px-4 py-3.5 text-[15px] leading-[1.7] whitespace-pre-wrap"
+              className="ml-10 mb-6 px-4 py-3.5 text-[0.9375rem] leading-[1.7] whitespace-pre-wrap"
               style={{ background: 'var(--color-soft)' }}
             >
               {m.content}
             </div>
           ) : (
             <div key={i} className="mb-6">
-              <div className="text-[13px] text-mute font-semibold mb-1">Ordo</div>
-              <p className="text-[15.5px] leading-[1.75] whitespace-pre-wrap">{m.content}</p>
+              <div className="text-[0.8125rem] text-mute font-semibold mb-1">Ordo</div>
+              <p className="text-[0.96875rem] leading-[1.75] whitespace-pre-wrap">{m.content}</p>
             </div>
           ),
         )}
 
         {loading && (
           <div className="mb-6">
-            <div className="text-[13px] text-mute font-semibold mb-1">Ordo</div>
-            <p className="text-[15.5px] leading-[1.75] text-mute">요청서를 작성하고 있습니다…</p>
+            <div className="text-[0.8125rem] text-mute font-semibold mb-1">Ordo</div>
+            <p className="text-[0.96875rem] leading-[1.75] text-mute">요청서를 작성하고 있습니다…</p>
           </div>
         )}
 
         {error && (
           <div className="mb-6">
-            <div className="text-[13px] text-mute font-semibold mb-1">Ordo</div>
-            <p className="text-[15.5px] leading-[1.75]">
+            <div className="text-[0.8125rem] text-mute font-semibold mb-1">Ordo</div>
+            <p className="text-[0.96875rem] leading-[1.75]">
               AI가 준비 중입니다. 잠시 후 다시 시도해 주세요.
             </p>
             <button
               type="button"
               onClick={onRetry}
-              className="mt-2 text-[14px] underline underline-offset-4"
+              className="mt-2 text-[0.875rem] underline underline-offset-4"
             >
               다시 시도
             </button>
@@ -133,13 +137,12 @@ export default function ChatPanel({ messages, loading, error, onSend, onRetry }:
           placeholder="메시지를 입력하세요 (Enter 보내기 · Shift+Enter 줄바꿈)"
           rows={1}
           disabled={loading}
-          className="flex-1 resize-none text-[15px] leading-[1.6] py-2.5 placeholder:text-faint focus:outline-none disabled:opacity-50 bg-transparent"
-          style={{ height: INPUT_LINE_HEIGHT + INPUT_VERT_PADDING + 'px' }}
+          className="flex-1 resize-none text-[0.9375rem] leading-[1.6] py-2.5 placeholder:text-mute focus:outline-none disabled:opacity-50 bg-transparent"
         />
         <button
           type="submit"
           disabled={loading || !draft.trim()}
-          className="h-11 px-5 bg-ink text-white text-[15px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          className="h-11 px-5 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
         >
           보내기
         </button>

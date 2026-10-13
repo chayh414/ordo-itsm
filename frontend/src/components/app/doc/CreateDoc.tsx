@@ -15,8 +15,8 @@ import { formatRequestedTime, label } from '../../../lib/i18n'
  *   ⑦ 자동 보정 (접힘 기본)
  *   ⑧ 하단 안내 + 취소 · 접수하기
  *
- * 글자 크기: 본문 17px, 라벨 15px, 메타 14px. 14px 미만·#6F6F6F 보다 옅은 회색 금지.
- * 콘텐츠 최대 폭 920px.
+ * 글자 크기: 본문 1.0625rem, 라벨 0.9375rem, 메타 0.875rem. 0.875rem 미만·#6F6F6F 보다 옅은 회색 금지.
+ * 콘텐츠 최대 폭 57.5rem.
  */
 
 interface Props {
@@ -72,17 +72,17 @@ export default function CreateDoc({
 
   return (
     <article className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[920px] px-16 pt-9 pb-0 min-h-full flex flex-col">
+      <div className="mx-auto max-w-[57.5rem] px-16 pt-9 pb-0 min-h-full flex flex-col">
         {/* ① 상단 메타 */}
         <div className="flex justify-between items-baseline">
-          <span className="text-[14px] text-mute">{headerText}</span>
-          <span className="text-[14px] text-mute">
+          <span className="text-[0.875rem] text-mute">{headerText}</span>
+          <span className="text-[0.875rem] text-mute">
             <b className="text-ink font-semibold">{ticket.ticketNo}</b>
           </span>
         </div>
 
         {/* ② 제목 */}
-        <h1 className="text-[34px] leading-[1.3] font-bold tracking-[-0.015em] mt-4 mb-5">
+        <h1 className="text-[2.125rem] leading-[1.3] font-bold tracking-[-0.015em] mt-4 mb-5">
           {documentTitle(result?.category, result?.affectedService)}
         </h1>
 
@@ -133,14 +133,14 @@ export default function CreateDoc({
               {riskRows.map((r, i) => (
                 <div
                   key={r.factor}
-                  className="grid border-t border-line py-3 text-[17px] items-baseline"
-                  style={{ gridTemplateColumns: '40px 180px 1fr 56px' }}
+                  className="grid border-t border-line py-3 text-[1.0625rem] items-baseline"
+                  style={{ gridTemplateColumns: '2.5rem 11.25rem 1fr 3.5rem' }}
                 >
-                  <span className="text-[14px] text-mute">{String(i + 1).padStart(2, '0')}</span>
+                  <span className="text-[0.875rem] text-mute">{String(i + 1).padStart(2, '0')}</span>
                   <span>{label.riskFactor(r.factor)}</span>
-                  <span className="text-mute text-[15px]">{r.quote ? `"${r.quote}"` : ''}</span>
+                  <span className="text-mute text-[0.9375rem]">{r.quote ? `"${r.quote}"` : ''}</span>
                   <span
-                    className="text-right text-[17px] font-semibold"
+                    className="text-right text-[1.0625rem] font-semibold"
                     style={r.points > 0 ? { color: 'var(--color-risk)' } : undefined}
                   >
                     {r.points > 0 ? `+${r.points}` : ''}
@@ -174,7 +174,7 @@ export default function CreateDoc({
 
         {/* ⑧ 푸터 */}
         <footer className="mt-auto border-t border-line flex justify-between items-center pt-5 pb-6">
-          <span className="text-[14px] text-mute max-w-[460px]">
+          <span className="text-[0.875rem] text-mute max-w-[28.75rem]">
             {submitted
               ? '접수가 완료되어 백오피스에 등록되었습니다.'
               : '접수하기 전에는 백오피스에 등록되지 않습니다.'}
@@ -185,7 +185,7 @@ export default function CreateDoc({
                 type="button"
                 onClick={onCancel}
                 disabled={submitting}
-                className="h-11 px-3 text-[15px] underline underline-offset-4 disabled:opacity-40"
+                className="h-11 px-3 text-[0.9375rem] underline underline-offset-4 disabled:opacity-40"
               >
                 취소
               </button>
@@ -194,7 +194,7 @@ export default function CreateDoc({
               type="button"
               onClick={onSubmit}
               disabled={submitting || submitted}
-              className="h-11 px-6 bg-ink text-white text-[15px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-11 px-6 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {submitted ? '접수됨' : submitting ? '접수 중…' : '접수하기'}
             </button>
@@ -233,13 +233,13 @@ function HeadlineSummary({
 
   return (
     <div
-      className="mb-8 text-[22px] font-bold leading-[1.4]"
+      className="mb-8 text-[1.375rem] font-bold leading-[1.4]"
       style={isHighRisk ? { color: 'var(--color-risk)' } : undefined}
     >
       {prefix}
       {riskPart}
       {changed && prevGrade && prevScore != null && grade && score != null && (
-        <div className="mt-1 text-[15px] font-normal text-mute">
+        <div className="mt-1 text-[0.9375rem] font-normal text-mute">
           {label.riskGrade(prevGrade)} {prevScore}점 → {label.riskGrade(grade)} {score}점
         </div>
       )}
@@ -254,16 +254,16 @@ function CollapsibleCorrections({ corrections }: { corrections: string[] }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-[15px] text-mute underline underline-offset-4 hover:text-ink transition-colors"
+        className="text-[0.9375rem] text-mute underline underline-offset-4 hover:text-ink transition-colors"
       >
         자동 보정 {corrections.length}건 · {open ? '접기' : '자세히 보기'}
       </button>
       {open && (
-        <div className="mt-3 text-[15px] text-mute leading-[1.75]">
+        <div className="mt-3 text-[0.9375rem] text-mute leading-[1.75]">
           {corrections.map((c, i) => (
             <div key={i}>{c}</div>
           ))}
-          <div className="mt-2 text-[14px]">보정이 있었던 요청은 담당자가 한 번 더 검토합니다.</div>
+          <div className="mt-2 text-[0.875rem]">보정이 있었던 요청은 담당자가 한 번 더 검토합니다.</div>
         </div>
       )}
     </section>
@@ -300,26 +300,26 @@ function SupplementItem({
 
   return (
     <div className="border-t border-line pt-3">
-      <p className="text-[17px]">{question}</p>
+      <p className="text-[1.0625rem]">{question}</p>
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         placeholder={`예) ${placeholderFor(field)}`}
         rows={2}
         disabled={disabled || busy}
-        className="w-full mt-3 py-2 text-[17px] resize-none bg-transparent focus:outline-none placeholder:text-mute disabled:opacity-50"
-        style={{ borderBottom: '1px solid var(--color-ink)' }}
+        className="w-full mt-3 py-2 text-[1.0625rem] resize-none bg-transparent focus:outline-none placeholder:text-mute disabled:opacity-50"
+        style={{ borderBottom: '0.0625rem solid var(--color-ink)' }}
       />
       <div className="mt-3 flex items-center gap-3">
         <button
           type="button"
           onClick={save}
           disabled={disabled || busy || !draft.trim()}
-          className="h-10 px-4 bg-ink text-white text-[15px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+          className="h-10 px-4 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy ? '다시 분석하고 있습니다…' : '답변 저장'}
         </button>
-        {busy && <span className="text-[14px] text-mute">잠시만 기다려 주세요</span>}
+        {busy && <span className="text-[0.875rem] text-mute">잠시만 기다려 주세요</span>}
       </div>
     </div>
   )
@@ -328,8 +328,8 @@ function SupplementItem({
 function SupplementedBlock({ field, answer }: { field: string; answer: string }) {
   return (
     <div className="border-t border-line pt-3">
-      <p className="text-[15px] text-mute">{label.field(field)}</p>
-      <p className="text-[17px] mt-1">
+      <p className="text-[0.9375rem] text-mute">{label.field(field)}</p>
+      <p className="text-[1.0625rem] mt-1">
         <span className="text-mute mr-1.5">보완 완료 ·</span>
         {answer}
       </p>
@@ -340,10 +340,10 @@ function SupplementedBlock({ field, answer }: { field: string; answer: string })
 function Kv({ k, v }: { k: string; v: string }) {
   return (
     <div
-      className="grid border-t border-line py-3 text-[17px]"
-      style={{ gridTemplateColumns: '120px 1fr' }}
+      className="grid border-t border-line py-3 text-[1.0625rem]"
+      style={{ gridTemplateColumns: '7.5rem 1fr' }}
     >
-      <span className="text-[15px] text-mute">{k}</span>
+      <span className="text-[0.9375rem] text-mute">{k}</span>
       <span>{v}</span>
     </div>
   )
@@ -360,10 +360,10 @@ function Section({
 }) {
   return (
     <section className="mt-9">
-      <h3 className="text-[15px] font-semibold mb-3">
+      <h3 className="text-[0.9375rem] font-semibold mb-3">
         {title}
         {sub && (
-          <small className="block font-normal text-mute text-[14px] mt-0.5">{sub}</small>
+          <small className="block font-normal text-mute text-[0.875rem] mt-0.5">{sub}</small>
         )}
       </h3>
       {children}
