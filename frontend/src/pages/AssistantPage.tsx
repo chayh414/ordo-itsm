@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import TopBar from '../components/app/TopBar'
 import ChatPanel, { type UiMessage } from '../components/app/ChatPanel'
 import DocPanel from '../components/app/DocPanel'
+import ToastContainer from '../components/app/ToastContainer'
 import { useAuth } from '../lib/auth'
 import { api, ApiError } from '../lib/api'
 import { usePageTitle } from '../lib/usePageTitle'
@@ -301,11 +302,40 @@ export default function AssistantPage() {
     [user],
   )
 
+  // 토스트 '확인' 클릭 → 해당 티켓을 DocPanel 에 get_request 카드로 로드
+  useEffect(() => {
+    if (!token) return
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ ticketId: number; ticketNo: string }>).detail
+      if (!detail) return
+      void (async () => {
+        try {
+          const ticket = await api<TicketDetailResponse>(`/api/tickets/${detail.ticketId}`, { token })
+          let triage: TriageResponse | undefined
+          try {
+            triage = await api<TriageResponse>(`/api/tickets/${detail.ticketId}/triage`, { token })
+          } catch {
+            triage = undefined
+          }
+          setCard({
+            tool: 'get_request',
+            data: { ticket, triage } as AssistantCardGet,
+          })
+        } catch {
+          // 접근 거부 등 — 조용히 무시 (토스트가 서버에서 걸러진 범위 외 티켓일 가능성)
+        }
+      })()
+    }
+    window.addEventListener('ordo:openTicket', handler)
+    return () => window.removeEventListener('ordo:openTicket', handler)
+  }, [token])
+
   if (!token || !user) return <Navigate to="/login" replace />
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <TopBar />
+      <ToastContainer />
       <main
         className="grid min-h-0 flex-1"
         style={{ gridTemplateColumns: '500px 1fr' }}
