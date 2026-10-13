@@ -44,6 +44,14 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
+// Windows 기본 cp949 로 소스를 읽어 한글 리터럴이 깨지는 걸 막는다.
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+}
+test {
+	systemProperty 'file.encoding', 'UTF-8'
+}
+
 // 루트의 .env 파일을 bootRun 환경변수로 로드 (API 키 등)
 tasks.named('bootRun') {
 	def envFile = file('../.env')

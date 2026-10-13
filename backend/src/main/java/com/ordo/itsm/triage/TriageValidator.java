@@ -44,19 +44,15 @@ public class TriageValidator {
             "scheduledTime", "environment", "testPlan", "rollbackPlan",
             "sourceIp", "destinationIp", "port", "occurredAt", "errorMessage");
 
-    /** 고객 보완이 들어온 필드 → 대응되는 위험 요인. 이 요인들이 함께 해소된다. */
-    private static final Map<String, String> SUPPLEMENT_FIELD_TO_FACTOR = Map.of(
-            "rollbackPlan", "rollback_plan_missing",
-            "testPlan", "test_plan_missing"
-    );
-
     // --- 패턴 ---
     private static final Pattern HHMM = Pattern.compile("(\\d{1,2}):(\\d{2})");
     /** "N시" — 뒤에 "간"이 붙으면(시간, 시간대) 매치 제외. 선택 수식어: 오전/오후/새벽/아침/저녁/밤/AM/PM. */
     private static final Pattern HOUR_WORD = Pattern.compile(
             "(오전|오후|새벽|아침|저녁|밤|AM|PM|am|pm)?\\s*(\\d{1,2})\\s*시(?!간)");
     private static final Pattern NIGHT_WORDS = Pattern.compile("심야|새벽|야간|밤");
-    private static final Pattern IP_PATTERN = Pattern.compile("\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b");
+    // \b 는 테스트 환경에 따라 유니코드 모드가 켜지면 다르게 작동할 수 있어
+    // 명시적 lookaround 로 "앞뒤가 숫자/점이 아닌" 경계를 지정한다.
+    private static final Pattern IP_PATTERN = Pattern.compile("(?<![\\d.])\\d{1,3}(?:\\.\\d{1,3}){3}(?![\\d.])");
     private static final Pattern PORT_PATTERN = Pattern.compile("\\d{2,5}\\s?(?:번\\s?)?포트|포트\\s?\\d{2,5}|:\\d{2,5}");
     // 주제 경계 가드 — 같은 문장 안에서도 "다른 주제 단어(롤백/테스트)" 전까지만 탐색한다.
     // 예: "테스트는 했지만 롤백 … 아직 못" 에서 '아직 못'은 롤백 쪽 부정이므로 테스트 부정으로 잡지 않음.
@@ -162,55 +158,56 @@ public class TriageValidator {
             // 모호한 경우(unambiguousHours 비어있고 심야 단어 없음) → 추가/제거 모두 skip
         }
 
-        // 4) rollback/test 일치성 (CHANGE에서만) :
-        //    원칙 — 제거는 "AI TRUE 또는 완료 표현" AND "부정 표현 없음"일 때만.
-        //    애매하면 유지(위험 쪽). AI TRUE라도 원문 부정이 있으면 부정을 우선한다.
+        // 4) rollback/test 동기화 (CHANGE 전체) :
+        //    - missing(rollbackPlan/testPlan) 과 factor(rollback_plan_missing/test_plan_missing) 는 한 곳에서 같이 결정.
+        //    - 언급 판정은 기존 원문 로직(ROLLBACK_WORDS/TEST_PLAN_WORDS + NEGATED, AI *Provided 플래그).
+        //    - supplements 에 값이 들어있으면 "언급 있음" 으로 우선 인정 (고객 보완은 원문 부정보다 우선).
+        //    - 언급 있음 → 둘 다 제거, 없음 → 둘 다 추가. non-CHANGE 는 아래 Rule 6 에서 factors 가 비워진다.
         if (requestType == RequestType.CHANGE) {
+            boolean testSupplied = hasSupplementValue(supplements, "testPlan");
+            boolean rollbackSupplied = hasSupplementValue(supplements, "rollbackPlan");
+
             boolean testNegated = TEST_PLAN_NEGATED.matcher(text).find();
             boolean rollbackNegated = ROLLBACK_NEGATED.matcher(text).find();
 
-            boolean testEvidence = (Boolean.TRUE.equals(r.testPlanProvided())
+            boolean testTextEvidence = (Boolean.TRUE.equals(r.testPlanProvided())
                     || TEST_PLAN_WORDS.matcher(text).find()) && !testNegated;
-            boolean rollbackEvidence = (Boolean.TRUE.equals(r.rollbackPlanProvided())
+            boolean rollbackTextEvidence = (Boolean.TRUE.equals(r.rollbackPlanProvided())
                     || ROLLBACK_WORDS.matcher(text).find()) && !rollbackNegated;
 
-            // 제거 ([FIX]) — 확실한 근거일 때만
-            if (testEvidence) {
-                if (factors.remove("test_plan_missing")) {
-                    corrections.add("[FIX] riskFactor-test_plan_missing (테스트 수행 근거 있음)");
-                }
-                if (missing.remove("testPlan")) {
-                    corrections.add("[FIX] missingField-testPlan (테스트 수행 근거 있음)");
-                }
-            }
-            if (rollbackEvidence) {
-                if (factors.remove("rollback_plan_missing")) {
-                    corrections.add("[FIX] riskFactor-rollback_plan_missing (롤백 계획 근거 있음)");
-                }
-                if (missing.remove("rollbackPlan")) {
-                    corrections.add("[FIX] missingField-rollbackPlan (롤백 계획 근거 있음)");
-                }
-            }
+            boolean testEvidence = testTextEvidence || testSupplied;
+            boolean rollbackEvidence = rollbackTextEvidence || rollbackSupplied;
 
-            // 추가 — AI FALSE면 [FILL], 원문 부정만 있고 AI는 TRUE/null이면 [FIX]
-            addMissingWithEvidence(missing, factors, corrections,
-                    "testPlan", "test_plan_missing", "testPlanProvided",
-                    Boolean.FALSE.equals(r.testPlanProvided()), testNegated, testEvidence,
-                    "원문에 테스트 미완료 표현");
-            addMissingWithEvidence(missing, factors, corrections,
-                    "rollbackPlan", "rollback_plan_missing", "rollbackPlanProvided",
-                    Boolean.FALSE.equals(r.rollbackPlanProvided()), rollbackNegated, rollbackEvidence,
-                    "원문에 롤백 계획 없음 표현");
+            syncChangeMissingFactor(missing, factors, corrections,
+                    "testPlan", "test_plan_missing", testEvidence, testSupplied);
+            syncChangeMissingFactor(missing, factors, corrections,
+                    "rollbackPlan", "rollback_plan_missing", rollbackEvidence, rollbackSupplied);
         }
-        // non-CHANGE는 아래 Rule에서 factors 전체를 비운다.
 
         // 5) Rule 3 — 유형·분류별 필수 항목 자동 보완 (AUTO_FILLABLE 안의 필드만)
         for (String field : requiredFieldsFor(requestType, category)) {
             if (!AUTO_FILLABLE.contains(field)) continue;      // 패턴 신뢰 어려운 필드는 AI 판단 유지
+            // testPlan/rollbackPlan 은 위 Rule 4 에서 CHANGE 전체에 대해 이미 결정됨 — 중복 처리 금지.
+            if ("testPlan".equals(field) || "rollbackPlan".equals(field)) continue;
             if (missing.contains(field)) continue;
             if (isFieldProvided(field, r, text, requestedTime)) continue;
             missing.add(field);
             corrections.add("[FILL] missingField+" + field);
+        }
+
+        // 5.5) 방화벽·네트워크: 원문에 IP 가 2개 이상이면 source/destination IP 는 "제공됨"으로 간주.
+        //      AI 가 missing 에 넣었어도 제거. (한 쪽만 있으면 어느 쪽인지 불분명 — missing 유지)
+        {
+            int ipCount = 0;
+            Matcher ipMatcher = IP_PATTERN.matcher(text);
+            while (ipMatcher.find()) ipCount++;
+            if (ipCount >= 2) {
+                boolean removedSrc = missing.remove("sourceIp");
+                boolean removedDst = missing.remove("destinationIp");
+                if (removedSrc || removedDst) {
+                    corrections.add("[FIX] sourceIp·destinationIp missing 해소 (원문에 IP " + ipCount + "개)");
+                }
+            }
         }
 
         // 6) Rule 6 — 위험 요인은 CHANGE 전용. non-CHANGE는 factors·evidence를 비운다 ([NORM]).
@@ -219,15 +216,13 @@ public class TriageValidator {
             factors.clear();
         }
 
-        // 6.5) 고객 보완(supplements) 반영 — 원문 부정 표현을 오버라이드.
-        //      보완된 필드는 missing/factor 에서 제거, [SUP] 로 기록 (확신도 하향 대상 아님).
+        // 6.5) 고객 보완(supplements) 반영 — testPlan/rollbackPlan 은 위 Rule 4 에서 이미 처리.
+        //      그 외 필드는 missing 에서만 제거 (대응 factor 없음).
         if (supplements != null && !supplements.isEmpty()) {
             for (String field : supplements.keySet()) {
-                boolean removedMissing = missing.remove(field);
-                String factorKey = SUPPLEMENT_FIELD_TO_FACTOR.get(field);
-                boolean removedFactor = factorKey != null && factors.remove(factorKey);
-                if (removedMissing || removedFactor) {
-                    corrections.add("[SUP] " + field + " 고객 보완으로 해소");
+                if ("testPlan".equals(field) || "rollbackPlan".equals(field)) continue;
+                if (missing.remove(field)) {
+                    corrections.add("[SUP] " + field + " 고객 보완으로 missing 해소");
                 }
             }
         }
@@ -386,23 +381,36 @@ public class TriageValidator {
         return Character.isWhitespace(c) || ".,;!?()[]{}:\"'".indexOf(c) >= 0;
     }
 
-    /** AI FALSE면 [FILL], AI null/TRUE + 원문 부정이면 [FIX]로 분기해 missing/factor를 보완. */
-    private static void addMissingWithEvidence(
+    /**
+     * CHANGE 요청에서 testPlan/rollbackPlan 의 missing·factor 를 한 곳에서 결정.
+     *   - evidence=true  : missing·factor 둘 다 제거 (supplements 로 해소되면 [SUP], 원문/AI 근거면 [FIX])
+     *   - evidence=false : missing·factor 둘 다 추가 ([FILL], 확신도 하향 트리거 아님)
+     *   이렇게 두 리스트의 rollback/test 가 "따로 놀" 수 없다.
+     */
+    private static void syncChangeMissingFactor(
             Set<String> missing, Set<String> factors, List<String> corrections,
-            String missingKey, String factorKey, String providedFieldName,
-            boolean aiFalse, boolean textNegated, boolean evidencePresent,
-            String negatedReasonText) {
-        if (evidencePresent) return;                 // 증거가 있으면 추가하지 않음
-        if (!aiFalse && !textNegated) return;        // AI와 원문 어느 쪽도 "없음" 신호가 없음
+            String missingKey, String factorKey, boolean evidence, boolean supplied) {
+        if (evidence) {
+            boolean removedMissing = missing.remove(missingKey);
+            boolean removedFactor = factors.remove(factorKey);
+            if (removedMissing || removedFactor) {
+                String prefix = supplied ? "[SUP]" : "[FIX]";
+                String reason = supplied ? "고객 보완으로 해소" : "원문/AI 근거로 해소";
+                corrections.add(prefix + " " + missingKey + "·" + factorKey + " 해소 (" + reason + ")");
+            }
+        } else {
+            boolean addedMissing = missing.add(missingKey);
+            boolean addedFactor = factors.add(factorKey);
+            if (addedMissing || addedFactor) {
+                corrections.add("[FILL] " + missingKey + "·" + factorKey + " 보강 (CHANGE 요청에 명시 없음)");
+            }
+        }
+    }
 
-        String prefix = aiFalse ? "[FILL]" : "[FIX]";
-        String reason = aiFalse ? providedFieldName + "=false" : negatedReasonText;
-        if (missing.add(missingKey)) {
-            corrections.add(prefix + " missingField+" + missingKey + " (" + reason + ")");
-        }
-        if (factors.add(factorKey)) {
-            corrections.add(prefix + " riskFactor+" + factorKey + " (" + reason + ")");
-        }
+    private static boolean hasSupplementValue(Map<String, String> supplements, String field) {
+        if (supplements == null) return false;
+        String v = supplements.get(field);
+        return v != null && !v.isBlank();
     }
 
     private static List<String> requiredFieldsFor(RequestType type, String category) {

@@ -1,16 +1,37 @@
 ﻿# Ordo 시나리오 자동 테스트 결과
 
-- 실행 시각: 2026-10-13 15:25
+- 실행 시각: 2026-10-13 15:25 (수정 전) / 16:33 (수정 후 subset)
 - 백엔드: http://localhost:8080 (이미 켜져있던 것 사용)
 - 입력 문장은 `docs/test/Ordo_테스트_시나리오.md` 와 100% 동일 (verbatim).
-- 실패 시 코드 수정하지 않음, 기록만.
 
-## 최종 요약
+## 수정 후 — 확인 subset (A1·A2·A4·A5·A6·A10·A12·A13)
 
-- **PASS 20 / AMBIGUOUS 3 / FAIL 2**  (총 25건, E는 UI 라 제외)
+Validator 수정 (CHANGE 전체 rollback/test 동기 + IP 2개면 재질문 제거) 반영 후:
+
+| # | 기대 | 수정 후 실제 | 통과 |
+|---|---|---|---|
+| A1 | create 9 → 보완 후 7 | create 9 (운영+schema+rollback_missing+night) → 보완 후 7 (schema+운영+night) | ✓ |
+| A2 | 11 (운영+방화벽/네트워크+rollback+test+심야) | **11** CHANGE/NETWORK · factors=[night, network_change, 운영, test_missing, rollback_missing] · missing=[testPlan, rollbackPlan] · **IP 재질문 없음** | ✓ |
+| A4 | 3 (dev + schema, 롤백·테스트 명시) | 3 CHANGE/DATABASE_SCHEMA · factors=[schema] · missing=[scheduledTime] | ✓ |
+| A5 | 6 (운영 + schema, 롤백·테스트 명시) | 6 CHANGE/DATABASE_SCHEMA · factors=[schema, 운영] · missing=[] | ✓ |
+| A6 | 8 (운영+심야+rollback+test) | **8** CHANGE/SERVER · factors=[night, 운영, test_missing, rollback_missing] · missing=[testPlan, rollbackPlan] | ✓ |
+| A10 | 10~11 | **11** CHANGE/FIREWALL · factors=[night, firewall, 운영, test_missing, rollback_missing] · missing=[affectedService, testPlan, rollbackPlan, sourceIp, destIp, scheduledTime] | ✓ |
+| A12 | 7 (운영+schema+심야, 롤백·테스트 명시) | 7 CHANGE/DATABASE_SCHEMA · factors=[night, schema, 운영] · missing=[] | ✓ |
+| A13 | 11 → 9 → 7, 접수 OK | **11 → 9 → 7**, submit=SUBMITTED | ✓ |
+
+**모두 통과.** A6 는 사용자가 "손대지 말고 알려진 한계로 적어라" 였지만, CHANGE 전체 적용 룰로 자동 해결됨 (SERVER 분류여도 rollback/test factor 가 붙음).
+
+## 알려진 한계 (수정 안 함)
+
+- **A3** — 변경 요청 / 계정 권한 (DB_PERMISSION or ACCOUNT): 모델이 `requestType=SERVICE_REQUEST + category=ACCOUNT` 로 분류해 CHANGE 룰이 적용 안 되고 점수 계산도 안 됨. "운영 DB 성적 테이블 조회 권한" 을 변경이 아닌 서비스 요청으로 본 셈. 분류 재조정 범위가 커서 손대지 않음.
+- **A2 분류 — 2-1 삭제 (의도):** 입력에 "방화벽" 단어가 없으면 `NETWORK` 로 분류됨. 점수 영향 없음(FIREWALL·NETWORK 둘 다 +3), 테스트 깨질 위험만 있어 분류 보강은 하지 않기로 결정.
+
+## 수정 전 — 2026-10-13 15:25 측정 (참고)
+
+- PASS 20 / AMBIGUOUS 3 / FAIL 2  (총 25건, E는 UI 라 제외)
 - FAIL: A2(방화벽 11점 기대 → 실제 네트워크 7점), A13(A2 fail 연쇄)
 - AMBIGUOUS: A3(ACCOUNT 분류·점수 없음), A6(심야 OK·점수 4), A10(FIREWALL OK·점수 7)
-- 코드 수정 전혀 하지 않음. 아래는 결과 기록만.
+- 아래 "A/B/C/D 결과" 표는 수정 전 상태로 보존.
 
 ## Round-trip (대표 시연 흐름)
 

@@ -119,6 +119,59 @@ class AssistantServiceLoopTest {
     }
 
     @Test
+    void secondTurnEmptyContent_retriesOnce_thenNaturalReply() {
+        AssistantTool fakeGet = new TestTool(GetRequestTool.NAME,
+                (u, args) -> ToolResult.ok("조회 결과", "card-data"));
+        FakeLlm llm = new FakeLlm();
+        llm.enqueue(new AssistantReply(null,
+                List.of(new ToolCall("c1", GetRequestTool.NAME, Map.of("ticketNo", "ORD-x"))), null));
+        llm.enqueue(new AssistantReply("", List.of(), null));
+        llm.enqueue(new AssistantReply("요청의 현재 상태는 보완 대기입니다.", List.of(), null));
+
+        AssistantService svc = build(llm, List.of(fakeGet));
+        ChatResponse res = svc.chat(requester, new ChatRequest("ORD-x 어디까지 됐어?", null));
+
+        assertEquals("요청의 현재 상태는 보완 대기입니다.", res.reply(), "재시도 결과가 reply 로 반환");
+        assertEquals(1, res.cards().size(), "카드 1건 유지");
+        assertFalse(res.truncated());
+    }
+
+    @Test
+    void secondTurnEmptyContent_retryAlsoEmpty_fallsBackToTemplate() {
+        AssistantTool fakeGet = new TestTool(GetRequestTool.NAME,
+                (u, args) -> ToolResult.ok("조회 결과", Map.of("ticket", "x")));
+        FakeLlm llm = new FakeLlm();
+        llm.enqueue(new AssistantReply(null,
+                List.of(new ToolCall("c1", GetRequestTool.NAME, Map.of("ticketNo", "ORD-x"))), null));
+        llm.enqueue(new AssistantReply("   ", List.of(), null));
+        llm.enqueue(new AssistantReply(null, List.of(), null));
+
+        AssistantService svc = build(llm, List.of(fakeGet));
+        ChatResponse res = svc.chat(requester, new ChatRequest("ORD-x 상태?", null));
+
+        assertTrue(res.reply().contains("오른쪽 요청서"),
+                "get_request 카드 기반 템플릿: " + res.reply());
+        assertEquals(1, res.cards().size());
+    }
+
+    @Test
+    void englishEnumInReply_isReplacedToKorean() {
+        FakeLlm llm = new FakeLlm();
+        llm.enqueue(new AssistantReply(
+                "ORD-x의 상태는 INFO_REQUIRED입니다. 분류는 DATABASE_SCHEMA 이고 rollbackPlan 이 필요합니다.",
+                List.of(), null));
+        AssistantService svc = build(llm, List.of());
+
+        ChatResponse res = svc.chat(requester, new ChatRequest("상태?", null));
+
+        assertTrue(res.reply().contains("보완 대기"), "INFO_REQUIRED → 보완 대기: " + res.reply());
+        assertTrue(res.reply().contains("DB 스키마"), "DATABASE_SCHEMA → DB 스키마");
+        assertTrue(res.reply().contains("롤백 절차"), "rollbackPlan → 롤백 절차");
+        assertFalse(res.reply().contains("INFO_REQUIRED"));
+        assertFalse(res.reply().contains("DATABASE_SCHEMA"));
+    }
+
+    @Test
     void history_includesUserAndAssistant_butDropsToolRole() {
         FakeLlm llm = new FakeLlm();
         llm.enqueue(new AssistantReply("ok", List.of(), null));

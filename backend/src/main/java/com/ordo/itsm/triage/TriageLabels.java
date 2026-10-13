@@ -99,4 +99,19 @@ public final class TriageLabels {
     public static String environment(String v) { return v == null ? "" : ENVIRONMENT.getOrDefault(v, v); }
     public static String riskFactor(String v) { return v == null ? "" : RISK_FACTOR.getOrDefault(v, v); }
     public static String field(String v) { return v == null ? "" : FIELD.getOrDefault(v, v); }
+
+    /**
+     * AssistantService 가 reply 치환에 쓰는 전체 enum→한글 매핑.
+     * 영어 enum 코드가 LLM 답변에 섞여 나오는 상황을 안전차로 가린다.
+     */
+    public static Map<String, String> allEnumMappings() {
+        Map<String, String> all = new java.util.LinkedHashMap<>();
+        all.putAll(STATUS);         // INFO_REQUIRED → 보완 대기 등 (상태값이 최우선 — 사용자 혼란 가장 큰 포인트)
+        all.putAll(CATEGORY);       // DATABASE_SCHEMA → DB 스키마
+        all.putAll(REQUEST_TYPE);   // CHANGE → 변경 요청
+        all.putAll(ENVIRONMENT);    // PRODUCTION → 운영
+        all.putAll(RISK_FACTOR);    // night_work → 심야 작업
+        all.putAll(FIELD);          // rollbackPlan → 롤백 절차
+        return Map.copyOf(all);
+    }
 }

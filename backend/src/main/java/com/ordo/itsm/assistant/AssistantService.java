@@ -13,6 +13,7 @@ import com.ordo.itsm.assistant.tool.AssistantTool;
 import com.ordo.itsm.assistant.tool.ToolResult;
 import com.ordo.itsm.global.security.AuthUser;
 import com.ordo.itsm.triage.SensitiveDataMasker;
+import com.ordo.itsm.triage.TriageLabels;
 import com.ordo.itsm.user.UserRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -83,6 +84,7 @@ public class AssistantService {
 
         List<ChatResponse.Card> cards = new ArrayList<>();
         List<ChatResponse.ToolCallSummary> callLog = new ArrayList<>();
+        int emptyRetries = 0;
 
         for (int i = 0; i < maxIterations; i++) {
             AssistantReply reply;
@@ -127,11 +129,21 @@ public class AssistantService {
                 // 함수 호출 문자열을 지운 뒤 생긴 연속 빈 줄은 한 줄 공백으로 축소.
                 clean = clean.replaceAll("\\n{3,}", "\n\n").trim();
                 if (clean.isBlank()) {
+                    // 이전에 tool 결과가 피드백됐는데 2차 응답 content 가 비었다면 1회만 재시도.
+                    boolean hadToolFeedback = messages.stream().anyMatch(m -> "tool".equals(m.role()));
+                    if (hadToolFeedback && emptyRetries == 0) {
+                        emptyRetries++;
+                        log.info("[Assistant] 2차 응답 content 비어있음 — 1회 재시도 (user={})", user.userId());
+                        // 방금 추가한 빈 assistant 메시지 제거 후 같은 messages 로 재질의
+                        messages.remove(messages.size() - 1);
+                        continue;
+                    }
+                    // 재시도도 실패 or 재시도 불가 → cards 기반 템플릿으로 안전 폴백
                     clean = cards.isEmpty()
                             ? "요청을 이해하지 못했어요. 조금만 더 설명해 주실래요?"
-                            : "요청하신 작업을 처리했어요. 아래 결과를 확인해 주세요.";
+                            : fallbackReplyFromCards(cards);
                 }
-                return new ChatResponse(clean, cards, callLog, false);
+                return new ChatResponse(applyKoreanLabels(clean), cards, callLog, false);
             }
 
             for (ToolCall call : effectiveCalls) {
@@ -149,6 +161,41 @@ public class AssistantService {
         return new ChatResponse(
                 "요청하신 작업을 처리했어요. 결과는 아래 카드를 확인해 주세요.",
                 cards, callLog, true);
+    }
+
+    /**
+     * 2차 응답 content 가 비었고 재시도도 실패했을 때, 마지막 카드의 종류로
+     * 사용자에게 안내할 안전한 템플릿 문장을 만든다. 상태값·분류값 등 enum 코드는 쓰지 않는다.
+     */
+    static String fallbackReplyFromCards(List<ChatResponse.Card> cards) {
+        ChatResponse.Card last = cards.get(cards.size() - 1);
+        return switch (last.tool()) {
+            case "create_request" -> "요청서를 준비했어요. 오른쪽 요청서에서 확인하고 '접수하기' 버튼을 눌러주세요.";
+            case "get_request" -> "조회한 요청 정보를 오른쪽 요청서에서 확인해주세요.";
+            case "list_my_requests", "list_requests" -> "요청 목록을 조회했어요. 아래 결과를 확인해주세요.";
+            default -> "요청하신 작업을 처리했어요. 아래 결과를 확인해 주세요.";
+        };
+    }
+
+    /**
+     * 사용자에게 보이는 최종 reply 에 영어 enum 코드(INFO_REQUIRED, DATABASE_SCHEMA, rollbackPlan 등)가 섞여
+     * 나올 때 한글 라벨로 치환해주는 안전차. 매핑에 없는 코드는 그대로 둔다.
+     * 단어 경계(\b)로만 매치해 "INFORMATION" 등 다른 단어 안에서는 치환되지 않는다.
+     *
+     * 참고: 프롬프트는 건드리지 않는다. 이 치환은 백엔드 응답 측 보호장치.
+     */
+    static String applyKoreanLabels(String text) {
+        if (text == null || text.isBlank()) return text;
+        String out = text;
+        for (var entry : TriageLabels.allEnumMappings().entrySet()) {
+            String code = entry.getKey();
+            String label = entry.getValue();
+            // ASCII 식별자 경계: 앞뒤가 영문자/숫자/_ 가 아니거나 문자열 끝. 한글은 non-word 로 취급.
+            out = out.replaceAll(
+                    "(?<![A-Za-z0-9_])" + java.util.regex.Pattern.quote(code) + "(?![A-Za-z0-9_])",
+                    java.util.regex.Matcher.quoteReplacement(label));
+        }
+        return out;
     }
 
     private static List<ChatRequest.HistoryMessage> safeHistory(List<ChatRequest.HistoryMessage> raw) {
