@@ -24,4 +24,14 @@ public class SlaService {
                 .orElseThrow(() -> new IllegalStateException("SLA 정책 없음: tenantId=" + tenantId));
         return ticketSlaRepository.save(TicketSla.start(ticket, policy, ticket.getCreatedAt()));
     }
+
+    /**
+     * 보완 완료로 INFO_REQUIRED → SUBMITTED 전환될 때 호출.
+     * 정지돼 있던 SLA 를 재개하고, 정지 시간만큼 마감을 뒤로 민다.
+     * 반환값은 정지돼 있던 분 수 (0 이면 이미 돌고 있던 상태라 변화 없음).
+     */
+    @Transactional
+    public int resume(TicketSla sla, java.time.OffsetDateTime now) {
+        return sla.resume(now);
+    }
 }

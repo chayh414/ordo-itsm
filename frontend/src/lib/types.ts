@@ -128,6 +128,17 @@ export interface AssistantCardGet {
   triage?: TriageResponse
 }
 
+/** POST /api/tickets/{id}/supplement 응답 (= 재분류 후 ticket + triage). */
+export interface SupplementResponse {
+  ticket: TicketDetailResponse
+  triage: TriageResponse
+}
+
+export interface SupplementRequest {
+  field: string
+  answer: string
+}
+
 export interface PageResponse<T> {
   content: T[]
   totalElements: number

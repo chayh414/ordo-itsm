@@ -11,6 +11,8 @@ import type {
   AssistantCardCreate,
   ChatRequest,
   ChatResponse,
+  RiskGrade,
+  SupplementResponse,
   TicketDetailResponse,
 } from '../lib/types'
 
@@ -36,6 +38,10 @@ export default function AssistantPage() {
   const [card, setCard] = useState<AssistantCard | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [supplementingField, setSupplementingField] = useState<string | null>(null)
+  const [supplementedAnswers, setSupplementedAnswers] = useState<Record<string, string>>({})
+  // 변화 표시: supplement 성공 직전의 위험도를 기억했다가 "9점 → 7점" 로 보여줌
+  const [prevRisk, setPrevRisk] = useState<{ grade: RiskGrade | null; score: number | null } | null>(null)
   const lastUserMessageRef = useRef<string | null>(null)
 
   const sendMessage = useCallback(
@@ -88,7 +94,52 @@ export default function AssistantPage() {
   const onCancel = useCallback(() => {
     setCard(null)
     setSubmitted(false)
+    setSupplementedAnswers({})
+    setPrevRisk(null)
   }, [])
+
+  const onSupplement = useCallback(
+    async (field: string, answer: string) => {
+      if (!token || !card || card.tool !== 'create_request') return
+      const createCard = card.data as AssistantCardCreate
+
+      // 변화 표시용: 호출 직전 위험도 스냅샷
+      setPrevRisk({
+        grade: createCard.triage.riskGrade,
+        score: createCard.triage.riskScore,
+      })
+      setSupplementingField(field)
+
+      try {
+        const resp = await api<SupplementResponse>(
+          `/api/tickets/${createCard.ticket.id}/supplement`,
+          { body: { field, answer }, token },
+        )
+        // ticket (TicketDetailResponse) → TicketCreatedResponse 형태로 쪼개서 카드 유지
+        setCard({
+          tool: 'create_request',
+          data: {
+            ticket: {
+              id: resp.ticket.id,
+              ticketNo: resp.ticket.ticketNo,
+              status: resp.ticket.status,
+              sla: resp.ticket.sla,
+              triage: null,
+              createdAt: resp.ticket.createdAt,
+            },
+            triage: resp.triage,
+          },
+        })
+        setSupplementedAnswers((prev) => ({ ...prev, [field]: answer }))
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : '보완 저장 중 오류가 발생했습니다.'
+        setError(msg)
+      } finally {
+        setSupplementingField(null)
+      }
+    },
+    [card, token],
+  )
 
   const onSubmit = useCallback(async () => {
     if (!token || !card || card.tool !== 'create_request') return
@@ -166,6 +217,10 @@ export default function AssistantPage() {
           submitted={submitted}
           onCancel={onCancel}
           onSubmit={onSubmit}
+          onSupplement={onSupplement}
+          supplementingField={supplementingField}
+          supplementedAnswers={supplementedAnswers}
+          prevRisk={prevRisk}
           isProviderSide={isProviderSide}
         />
       </main>

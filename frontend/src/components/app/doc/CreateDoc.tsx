@@ -1,11 +1,16 @@
-import type { AssistantCardCreate } from '../../../lib/types'
+import { useState } from 'react'
+import type { AssistantCardCreate, RiskGrade } from '../../../lib/types'
 import { formatRequestedTime, label } from '../../../lib/i18n'
 
 /*
  * create_request 결과 요청서. 디자인 가이드 v3 §4 에 명시된 섹션 순서:
  * 메타(상태·요청번호) → 제목 → 2단 kv표 → 위험도 → 확인 필요 → 자동 보정 → 하단 안내+버튼
  *
- * 위험 점수·등급은 백엔드가 아직 안 주므로 자리만 (데이터 있으면 자동 표시).
+ * 보완 기능:
+ * - "확인이 필요한 내용" 질문마다 textarea + "답변 저장" 버튼
+ * - 저장 중엔 "다시 분석하고 있습니다…" 안내
+ * - 보완 완료된 필드는 "보완 완료 · (답변)" 로 표시
+ * - 위험도 변화는 prevRisk 가 있으면 "매우 높음 9점 → 높음 7점"
  */
 
 interface Props {
@@ -15,15 +20,28 @@ interface Props {
   submitted: boolean
   onCancel(): void
   onSubmit(): void
+  onSupplement(field: string, answer: string): void
+  supplementingField: string | null
+  supplementedAnswers: Record<string, string>
+  prevRisk: { grade: RiskGrade | null; score: number | null } | null
 }
 
-export default function CreateDoc({ card, requesterName, submitting, submitted, onCancel, onSubmit }: Props) {
+export default function CreateDoc({
+  card,
+  requesterName,
+  submitting,
+  submitted,
+  onCancel,
+  onSubmit,
+  onSupplement,
+  supplementingField,
+  supplementedAnswers,
+  prevRisk,
+}: Props) {
   const { ticket, triage } = card
   const result = triage.result
-  const displayStatus = submitted ? ticket.status : ticket.status // ticket.status 는 호출자가 submit 성공 후 갱신해줌
-  const headerText = label.docHeader(displayStatus)
+  const headerText = label.docHeader(ticket.status)
 
-  // 위험 요인 행: evidence 가 있는 것은 quote 같이, 없으면 라벨만. 점수는 factorPoints 에서.
   type RiskRow = { factor: string; quote: string | null; points: number | null }
   const factorPoints = triage.factorPoints ?? null
   const riskRows: RiskRow[] = (result?.riskFactors ?? []).map((f) => {
@@ -35,16 +53,16 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
     }
   })
 
-  // 위험 점수·등급 — CHANGE 요청만 백엔드가 돌려줌. 그 외는 null (섹션 extra 숨김).
   const grade = triage.riskGrade
   const score = triage.riskScore
   const isHighRisk = grade === 'HIGH' || grade === 'CRITICAL'
+  const changed = prevRisk && (prevRisk.grade !== grade || prevRisk.score !== score)
 
-  const firstQuestion = result?.clarifyingQuestions?.[0] ?? null
-  const firstMissing = result?.missingFields?.[0]
-  const placeholder = firstMissing
-    ? `예) ${placeholderFor(firstMissing)}`
-    : '여기에 추가 설명을 적어주세요'
+  // 질문 ↔ 필드 매칭. missingFields 와 clarifyingQuestions 는 같은 순서로 생성됨 (TriageValidator).
+  const questions: Array<{ field: string; question: string }> = (result?.missingFields ?? []).map((field, i) => ({
+    field,
+    question: result?.clarifyingQuestions?.[i] ?? label.field(field),
+  }))
 
   return (
     <article className="h-full flex flex-col overflow-y-auto px-16 pt-9 pb-0">
@@ -58,9 +76,7 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
 
       {/* 제목 */}
       <h1 className="text-[34px] leading-[1.3] font-bold tracking-[-0.015em] mt-4 mb-7 max-w-[640px]">
-        {ticket.sla == null && ticket.triage == null
-          ? documentTitle(result?.category, result?.affectedService)
-          : documentTitle(result?.category, result?.affectedService)}
+        {documentTitle(result?.category, result?.affectedService)}
       </h1>
 
       {/* 2단 kv */}
@@ -89,6 +105,11 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
                 style={isHighRisk ? { color: 'var(--color-risk)' } : undefined}
               >
                 {label.riskGrade(grade)} · {score}점
+                {changed && prevRisk && prevRisk.grade && prevRisk.score != null && (
+                  <span className="text-mute font-normal text-[13px] ml-2">
+                    ({label.riskGrade(prevRisk.grade)} {prevRisk.score}점 → {label.riskGrade(grade)} {score}점)
+                  </span>
+                )}
               </div>
               {isHighRisk && (
                 <div className="text-[13px] text-mute mt-1">승인이 필요한 작업</div>
@@ -122,17 +143,28 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
         )}
       </Section>
 
-      {/* 확인이 필요한 내용 */}
-      {firstQuestion && (
+      {/* 확인이 필요한 내용 — 질문별 입력 폼 */}
+      {(questions.length > 0 || Object.keys(supplementedAnswers).length > 0) && (
         <Section title="확인이 필요한 내용">
-          <div className="border-t border-line pt-3">
-            <p className="text-[15px]">{firstQuestion}</p>
-            <div
-              className="mt-2.5 pt-1.5 pb-1.5 text-[15px] text-faint max-w-[520px]"
-              style={{ borderBottom: '1px solid var(--color-ink)' }}
-            >
-              {placeholder}
-            </div>
+          <div className="space-y-5">
+            {/* 보완 완료된 항목 (이번 턴에 답한 것 — 서버 분석 반영 후엔 missing 에서 빠져서 안 보이므로 별도 표시) */}
+            {Object.entries(supplementedAnswers)
+              .filter(([f]) => !questions.some((q) => q.field === f))
+              .map(([f, a]) => (
+                <SupplementedBlock key={f} field={f} answer={a} />
+              ))}
+
+            {questions.map(({ field, question }) => (
+              <SupplementItem
+                key={field}
+                field={field}
+                question={question}
+                answer={supplementedAnswers[field] ?? null}
+                busy={supplementingField === field}
+                disabled={supplementingField !== null || submitted}
+                onSave={(ans) => onSupplement(field, ans)}
+              />
+            ))}
           </div>
         </Section>
       )}
@@ -178,6 +210,73 @@ export default function CreateDoc({ card, requesterName, submitting, submitted, 
         </div>
       </footer>
     </article>
+  )
+}
+
+function SupplementItem({
+  field,
+  question,
+  answer,
+  busy,
+  disabled,
+  onSave,
+}: {
+  field: string
+  question: string
+  answer: string | null
+  busy: boolean
+  disabled: boolean
+  onSave(ans: string): void
+}) {
+  const [draft, setDraft] = useState('')
+
+  if (answer) {
+    return <SupplementedBlock field={field} answer={answer} />
+  }
+
+  function save() {
+    const t = draft.trim()
+    if (!t || busy) return
+    onSave(t)
+    setDraft('')
+  }
+
+  return (
+    <div className="border-t border-line pt-3">
+      <p className="text-[15px]">{question}</p>
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={`예) ${placeholderFor(field)}`}
+        rows={2}
+        disabled={disabled || busy}
+        className="w-full mt-2.5 py-1.5 text-[15px] resize-none bg-transparent focus:outline-none placeholder:text-faint disabled:opacity-50"
+        style={{ borderBottom: '1px solid var(--color-ink)' }}
+      />
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={save}
+          disabled={disabled || busy || !draft.trim()}
+          className="h-9 px-4 bg-ink text-white text-[14px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {busy ? '다시 분석하고 있습니다…' : '답변 저장'}
+        </button>
+        {busy && <span className="text-[13px] text-mute">잠시만 기다려 주세요</span>}
+      </div>
+    </div>
+  )
+}
+
+function SupplementedBlock({ field, answer }: { field: string; answer: string }) {
+  return (
+    <div className="border-t border-line pt-3">
+      <p className="text-[13px] text-mute">{label.field(field)}</p>
+      <p className="text-[15px] mt-1">
+        <span className="text-mute mr-1.5">보완 완료 ·</span>
+        {answer}
+      </p>
+    </div>
   )
 }
 
@@ -232,7 +331,6 @@ function documentTitle(category: string | undefined | null, service: string | nu
   return '요청서'
 }
 
-/** missing field 키 → 입력 힌트 placeholder (디자인 가이드의 "예)" 예시). */
 function placeholderFor(key: string): string {
   const examples: Record<string, string> = {
     rollbackPlan: '추가한 컬럼 삭제 스크립트, 작업 전 테이블 백업',

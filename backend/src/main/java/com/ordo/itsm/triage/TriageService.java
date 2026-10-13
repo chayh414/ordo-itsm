@@ -103,6 +103,49 @@ public class TriageService {
     }
 
     /**
+     * 고객 보완(supplements)을 반영해 트리아지를 재실행한다. TicketService.supplement 로 저장 후 호출.
+     * - validator 에 supplements 를 넘겨 원문 부정보다 우선해 "제공됨" 처리
+     * - 위험도 재평가 (RISK_REASSESSED) + 상태 재적용 (INFO_REQUIRED → SUBMITTED + SLA 재개)
+     */
+    @Transactional
+    public TriageResponse rerunWithSupplements(AuthUser user, Long ticketId, Map<String, String> supplements) {
+        Ticket ticket = loadAccessible(user, ticketId);
+        int attemptNo = recordRepository.countByTicket_Id(ticketId) + 1;
+
+        String masked = masker.mask(ticket.getSubject() + "\n" + ticket.getOriginalRequest());
+
+        TriageResult result;
+        try {
+            TriageOutcome outcome = engine.analyze(masked);
+            result = validator.validate(outcome.result(), masked, supplements);
+        } catch (TriageEngineException e) {
+            return recordFailure(user, ticket, attemptNo, e);
+        }
+
+        recordRepository.save(AiTriageRecord.of(ticket, attemptNo, engine.modelName(),
+                TriageResultStatus.SUCCESS, jsonMapper.writeValueAsString(result), result.confidence()));
+
+        boolean slaPaused = applyToTicket(user, ticket, result);
+        RiskPolicy.Outcome risk = riskPolicyService.assess(user, ticket, result);
+
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("attemptNo", attemptNo);
+        after.put("reason", "SUPPLEMENT_RERUN");
+        after.put("supplementedFields", supplements.keySet());
+        after.put("missingFields", result.missingFields());
+        after.put("riskFactors", result.riskFactors());
+        after.put("ticketStatus", ticket.getStatus().name());
+        auditLogService.record(AuditAction.AI_TRIAGED, user, ticket.getTenant().getId(), ticket.getId(), null, after);
+
+        return new TriageResponse(attemptNo, TriageResultStatus.SUCCESS, engine.modelName(),
+                result.confidence(), result.confidence() < TriageResponse.REVIEW_THRESHOLD,
+                result, null, ticket.getStatus(), slaPaused || isSlaPaused(ticketId),
+                risk == null ? null : risk.score(),
+                risk == null ? null : risk.grade(),
+                risk == null ? null : risk.factorPoints());
+    }
+
+    /**
      * 저장된 최신 트리아지 결과(SUCCESS)를 지금 상태 티켓에 재적용한다.
      * DRAFT → SUBMITTED 로 접수한 직후, 누락 정보가 있으면 INFO_REQUIRED + SLA 정지가 반영되도록 호출.
      */
@@ -163,27 +206,42 @@ public class TriageService {
             return false;
         }
 
-        if (result.missingFields().isEmpty()) {
-            return false;
-        }
+        boolean hasMissing = !result.missingFields().isEmpty();
         // 장애(INCIDENT)는 누락 정보가 있어도 상태·SLA를 유지한다 (운영 대응 지연 방지).
-        if (result.requestType() == RequestType.INCIDENT) {
+        boolean skipTransition = result.requestType() == RequestType.INCIDENT;
+
+        // 순방향: 누락 있음 → INFO_REQUIRED + SLA pause
+        if (hasMissing && !skipTransition) {
+            TicketStatus before = ticket.getStatus();
+            if (before != TicketStatus.INFO_REQUIRED) {
+                ticket.changeStatus(TicketStatus.INFO_REQUIRED);
+                auditLogService.record(AuditAction.STATUS_CHANGED, user, ticket.getTenant().getId(), ticket.getId(),
+                        Map.of("status", before.name()),
+                        Map.of("status", TicketStatus.INFO_REQUIRED.name(), "reason", "MISSING_FIELDS"));
+            }
+            TicketSla sla = ticketSlaRepository.findByTicket_Id(ticket.getId()).orElse(null);
+            if (sla != null && sla.pause(OffsetDateTime.now())) {
+                auditLogService.record(AuditAction.SLA_PAUSED, user, ticket.getTenant().getId(), ticket.getId(),
+                        null, Map.of("reason", "INFO_REQUIRED"));
+                return true;
+            }
             return false;
         }
 
-        TicketStatus before = ticket.getStatus();
-        ticket.changeStatus(TicketStatus.INFO_REQUIRED);
-        if (before != TicketStatus.INFO_REQUIRED) {
+        // 역방향: 누락 없음 + 현재 INFO_REQUIRED → SUBMITTED 로 복귀 + SLA 재개
+        // 보완 완료 경로. 정지시간만큼 마감이 뒤로 밀린다.
+        if (ticket.getStatus() == TicketStatus.INFO_REQUIRED) {
+            ticket.changeStatus(TicketStatus.SUBMITTED);
             auditLogService.record(AuditAction.STATUS_CHANGED, user, ticket.getTenant().getId(), ticket.getId(),
-                    Map.of("status", before.name()),
-                    Map.of("status", TicketStatus.INFO_REQUIRED.name(), "reason", "MISSING_FIELDS"));
-        }
-
-        TicketSla sla = ticketSlaRepository.findByTicket_Id(ticket.getId()).orElse(null);
-        if (sla != null && sla.pause(OffsetDateTime.now())) {
-            auditLogService.record(AuditAction.SLA_PAUSED, user, ticket.getTenant().getId(), ticket.getId(),
-                    null, Map.of("reason", "INFO_REQUIRED"));
-            return true;
+                    Map.of("status", TicketStatus.INFO_REQUIRED.name()),
+                    Map.of("status", TicketStatus.SUBMITTED.name(), "reason", "INFO_SUPPLEMENTED"));
+            TicketSla sla = ticketSlaRepository.findByTicket_Id(ticket.getId()).orElse(null);
+            if (sla != null && sla.isPaused()) {
+                int minutes = sla.resume(OffsetDateTime.now());
+                auditLogService.record(AuditAction.SLA_RESUMED, user, ticket.getTenant().getId(), ticket.getId(),
+                        null, Map.of("resumedMinutes", minutes));
+            }
+            return false;
         }
         return false;
     }

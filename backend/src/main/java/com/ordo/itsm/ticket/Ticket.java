@@ -136,6 +136,11 @@ public class Ticket {
         this.riskGrade = grade;
     }
 
+    /** detail_json 전체 교체. 호출자가 직렬화 책임 (TicketService 쪽에서 JsonMapper 사용). */
+    public void applyDetailJson(String json) {
+        this.detailJson = json == null ? "{}" : json;
+    }
+
     @PrePersist
     void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();

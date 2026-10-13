@@ -44,6 +44,12 @@ public class TriageValidator {
             "scheduledTime", "environment", "testPlan", "rollbackPlan",
             "sourceIp", "destinationIp", "port", "occurredAt", "errorMessage");
 
+    /** 고객 보완이 들어온 필드 → 대응되는 위험 요인. 이 요인들이 함께 해소된다. */
+    private static final Map<String, String> SUPPLEMENT_FIELD_TO_FACTOR = Map.of(
+            "rollbackPlan", "rollback_plan_missing",
+            "testPlan", "test_plan_missing"
+    );
+
     // --- 패턴 ---
     private static final Pattern HHMM = Pattern.compile("(\\d{1,2}):(\\d{2})");
     /** "N시" — 뒤에 "간"이 붙으면(시간, 시간대) 매치 제외. 선택 수식어: 오전/오후/새벽/아침/저녁/밤/AM/PM. */
@@ -69,6 +75,15 @@ public class TriageValidator {
             "운영|프로덕션|실서버|스테이징|개발|dev|prod|staging", Pattern.CASE_INSENSITIVE);
 
     public TriageResult validate(TriageResult r, String rawText) {
+        return validate(r, rawText, Map.of());
+    }
+
+    /**
+     * supplements: 고객이 "확인이 필요한 내용" 질문에 답한 필드 → 답변 내용.
+     * 원문에 부정 표현(예: "롤백 없어요")이 남아 있어도 보완된 필드는 "제공됨"으로 간주해
+     * 해당 missing·위험 요인을 제거한다. 보정 로그는 [SUP] 프리픽스 (확신도 하향 대상 아님).
+     */
+    public TriageResult validate(TriageResult r, String rawText, Map<String, String> supplements) {
         if (r == null || r.requestType() == null) {
             throw new TriageEngineException(TriageEngineException.Kind.INVALID_JSON,
                     "requestType이 없습니다.", null, null);
@@ -202,6 +217,19 @@ public class TriageValidator {
         if (requestType != RequestType.CHANGE && !factors.isEmpty()) {
             corrections.add("[NORM] riskFactors cleared (requestType=" + requestType + " — CHANGE 전용)");
             factors.clear();
+        }
+
+        // 6.5) 고객 보완(supplements) 반영 — 원문 부정 표현을 오버라이드.
+        //      보완된 필드는 missing/factor 에서 제거, [SUP] 로 기록 (확신도 하향 대상 아님).
+        if (supplements != null && !supplements.isEmpty()) {
+            for (String field : supplements.keySet()) {
+                boolean removedMissing = missing.remove(field);
+                String factorKey = SUPPLEMENT_FIELD_TO_FACTOR.get(field);
+                boolean removedFactor = factorKey != null && factors.remove(factorKey);
+                if (removedMissing || removedFactor) {
+                    corrections.add("[SUP] " + field + " 고객 보완으로 해소");
+                }
+            }
         }
 
         // 7) evidence는 최종 factors에 속한 것만 유지 (자동 추가된 factor는 evidence 없음 — corrections가 근거)

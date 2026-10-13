@@ -109,6 +109,53 @@ public class TicketService {
     }
 
     /**
+     * "확인이 필요한 내용" 질문에 대한 사용자 답변을 tickets.detail_json 의 supplements 에 저장.
+     * - 요청자 본인만, DRAFT 또는 INFO_REQUIRED 상태일 때만
+     * - 재분류·위험도 재평가는 호출자가 TriageService.rerunWithSupplements 로 이어 실행
+     * 감사: INFO_SUPPLEMENTED
+     */
+    @Transactional
+    public void supplement(AuthUser user, Long ticketId, String field, String answer) {
+        if (field == null || field.isBlank() || answer == null || answer.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "field 와 answer 가 모두 필요합니다.");
+        }
+        Ticket ticket = ticketRepository.findWithTenantAndRequesterById(ticketId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TICKET_NOT_FOUND));
+
+        if (!tenantAccessService.scopeOf(user).includes(ticket.getTenant().getId())
+                || !ticket.getRequester().getId().equals(user.userId())) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "본인이 올린 요청만 보완할 수 있습니다.");
+        }
+        if (ticket.getStatus() != TicketStatus.DRAFT && ticket.getStatus() != TicketStatus.INFO_REQUIRED) {
+            throw new BusinessException(ErrorCode.TICKET_INVALID_TRANSITION,
+                    "지금 상태(" + ticket.getStatus() + ")에서는 보완할 수 없습니다.");
+        }
+
+        Map<String, Object> detail = parseDetails(ticket.getDetailJson());
+        Map<String, Object> mutable = new LinkedHashMap<>(detail);
+        @SuppressWarnings("unchecked")
+        Map<String, String> sups = (Map<String, String>) mutable.get("supplements");
+        if (sups == null) sups = new LinkedHashMap<>();
+        else sups = new LinkedHashMap<>(sups);
+        sups.put(field.trim(), answer.trim());
+        mutable.put("supplements", sups);
+        ticket.applyDetailJson(jsonMapper.writeValueAsString(mutable));
+
+        auditLogService.record(AuditAction.INFO_SUPPLEMENTED, user, ticket.getTenant().getId(), ticket.getId(),
+                null, Map.of("field", field.trim(), "answer", answer.trim()));
+    }
+
+    /** TriageService.rerunWithSupplements 가 사용할 — 티켓의 detail_json 에서 보완 맵 추출. */
+    public Map<String, String> getSupplements(Long ticketId) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TICKET_NOT_FOUND));
+        Map<String, Object> detail = parseDetails(ticket.getDetailJson());
+        @SuppressWarnings("unchecked")
+        Map<String, String> sups = (Map<String, String>) detail.get("supplements");
+        return sups == null ? Map.of() : Map.copyOf(sups);
+    }
+
+    /**
      * DRAFT 티켓을 사용자가 직접 접수한다.
      * - 요청자 본인만 가능
      * - DRAFT 상태에서만 가능 (idempotent 아님: 이미 SUBMITTED 면 409)
