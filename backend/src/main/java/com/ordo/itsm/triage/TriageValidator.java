@@ -232,10 +232,27 @@ public class TriageValidator {
             }
         }
 
-        // 7) evidence는 최종 factors에 속한 것만 유지 (자동 추가된 factor는 evidence 없음 — corrections가 근거)
-        List<Evidence> evidence = r.evidence() == null ? List.of()
-                : r.evidence().stream()
-                .filter(e -> e != null && factors.contains(e.factor()))
+        // 7) evidence 정리 + 보강.
+        //    AI 가 보낸 evidence 중 최종 factors 에 속한 것만 유지.
+        //    evidence 가 없는 factor 는 원문에서 패턴으로 찾아 서버가 붙여준다 (못 찾으면 비움, 지어내지 않음).
+        java.util.LinkedHashMap<String, Evidence> byFactor = new java.util.LinkedHashMap<>();
+        if (r.evidence() != null) {
+            for (Evidence e : r.evidence()) {
+                if (e == null || !factors.contains(e.factor())) continue;
+                if (e.quote() == null || e.quote().isBlank()) continue;
+                byFactor.putIfAbsent(e.factor(), e);
+            }
+        }
+        for (String f : factors) {
+            if (byFactor.containsKey(f)) continue;
+            String snippet = findEvidenceSnippet(f, text);
+            if (!snippet.isBlank()) {
+                byFactor.put(f, new Evidence(f, snippet));
+            }
+        }
+        List<Evidence> evidence = factors.stream()
+                .map(byFactor::get)
+                .filter(e -> e != null)
                 .toList();
 
         // 7) 보완 질문 재생성
@@ -252,14 +269,61 @@ public class TriageValidator {
             confidence = 0.6;
         }
 
+        // 9) title 폴백 — AI 가 안 줬거나 20자 초과면 "service + category" 조합으로 채운다.
+        String title = resolveTitle(r.title(), blankToNull(r.affectedService()), category);
+
         return new TriageResult(
-                requestType, category, r.environment(), requestedTime,
+                requestType, category, title,
+                r.environment(), requestedTime,
                 r.recommendedPriority(), team, blankToNull(r.affectedService()),
                 r.testPlanProvided(), r.rollbackPlanProvided(),
                 List.copyOf(missing), List.copyOf(factors), evidence,
                 questions, confidence,
                 List.copyOf(corrections)
         );
+    }
+
+    /** AI title 이 비거나 너무 길면 "service + category" 또는 category 로 폴백. */
+    private static String resolveTitle(String aiTitle, String service, String category) {
+        if (aiTitle != null) {
+            String t = aiTitle.trim();
+            if (!t.isEmpty() && t.length() <= 20) return t;
+        }
+        String catKo = TriageLabels.category(category);
+        if (service != null && !service.isBlank() && catKo != null && !catKo.isBlank()) {
+            String combo = service.trim() + " " + catKo;
+            return combo.length() > 20 ? combo.substring(0, 20) : combo;
+        }
+        if (service != null && !service.isBlank()) return service.trim();
+        return catKo == null || catKo.isBlank() ? "요청" : catKo;
+    }
+
+    /** factor → 원문에서 근거 스니펫 (20자 이내). 못 찾으면 빈 문자열. 지어내지 않음. */
+    private static final Map<String, Pattern> FACTOR_EVIDENCE_PATTERNS;
+    static {
+        Map<String, Pattern> m = new java.util.LinkedHashMap<>();
+        m.put("production_environment", Pattern.compile("운영\\s?(?:DB|서버|환경)?|프로덕션|실서버|실서비스"));
+        m.put("database_schema_change", Pattern.compile("테이블|컬럼|스키마|인덱스"));
+        m.put("database_permission_change", Pattern.compile("권한|GRANT|REVOKE", Pattern.CASE_INSENSITIVE));
+        m.put("firewall_change", Pattern.compile("방화벽|포트|ACL", Pattern.CASE_INSENSITIVE));
+        m.put("network_change", Pattern.compile("네트워크|라우팅|VLAN|라우터", Pattern.CASE_INSENSITIVE));
+        m.put("rollback_plan_missing", Pattern.compile("롤백|원복"));
+        m.put("test_plan_missing", Pattern.compile("테스트"));
+        m.put("night_work", Pattern.compile("심야|새벽|야간|밤|2[2-4]시|0?[0-5]시"));
+        FACTOR_EVIDENCE_PATTERNS = Map.copyOf(m);
+    }
+
+    private static String findEvidenceSnippet(String factor, String text) {
+        if (text == null || text.isBlank()) return "";
+        Pattern p = FACTOR_EVIDENCE_PATTERNS.get(factor);
+        if (p == null) return "";
+        Matcher m = p.matcher(text);
+        if (!m.find()) return "";
+        int s = Math.max(0, m.start() - 3);
+        int e = Math.min(text.length(), m.end() + 12);
+        String snippet = text.substring(s, e).replaceAll("[\\n\\r]+", " ").trim();
+        if (snippet.length() > 20) snippet = snippet.substring(0, 20).trim();
+        return snippet;
     }
 
     /** AI FALSE면 [FILL], AI null/TRUE + 원문 부정이면 [FIX]로 분기해 missing/factor를 보완. */

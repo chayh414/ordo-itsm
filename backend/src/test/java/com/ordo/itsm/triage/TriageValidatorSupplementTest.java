@@ -139,7 +139,7 @@ class TriageValidatorSupplementTest {
                                          String affectedService, Boolean testPlan, Boolean rollback,
                                          List<String> missing, List<String> factors,
                                          List<Evidence> evidence, double confidence) {
-        return new TriageResult(type, category, env, requestedTime, priority, team, affectedService,
+        return new TriageResult(type, category, null, env, requestedTime, priority, team, affectedService,
                 testPlan, rollback, missing, factors, evidence,
                 List.of(), confidence, null);
     }

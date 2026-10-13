@@ -175,6 +175,7 @@ public class OpenAiCompatibleTriageEngine implements TriageEngine {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("requestType", enumOf(List.of("INCIDENT", "SERVICE_REQUEST", "CHANGE", "INQUIRY")));
         props.put("category", enumOf(TriageVocabulary.CATEGORIES));
+        props.put("title", nullableTypeOf("string"));
         props.put("environment", nullableEnumOf(List.of("PRODUCTION", "STAGING", "DEV")));
         props.put("requestedTime", nullableTypeOf("string"));
         props.put("recommendedPriority", enumOf(List.of("P1", "P2", "P3", "P4")));

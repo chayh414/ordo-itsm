@@ -335,7 +335,7 @@ class TriageValidatorTest {
                 "[FILL] 거짓 보완"
         );
         TriageResult ai = new TriageResult(
-                RequestType.CHANGE, "DATABASE_SCHEMA", EnvironmentType.STAGING,
+                RequestType.CHANGE, "DATABASE_SCHEMA", null, EnvironmentType.STAGING,
                 "14:00", Priority.P3, "DB_OPERATION",
                 "users 테이블", true, false,
                 List.of("rollbackPlan"),
@@ -496,7 +496,7 @@ class TriageValidatorTest {
                                          String affectedService, Boolean testPlan, Boolean rollback,
                                          List<String> missing, List<String> factors,
                                          List<Evidence> evidence, double confidence) {
-        return new TriageResult(type, category, env, requestedTime, priority, team, affectedService,
+        return new TriageResult(type, category, null, env, requestedTime, priority, team, affectedService,
                 testPlan, rollback, missing, factors, evidence,
                 List.of(),      // clarifyingQuestions — validator가 재생성
                 confidence,

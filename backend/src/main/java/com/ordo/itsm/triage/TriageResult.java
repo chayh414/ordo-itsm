@@ -13,6 +13,8 @@ import java.util.List;
 public record TriageResult(
         RequestType requestType,
         String category,
+        /** 20자 이내 "무엇을 하는지" 요약. AI 가 채우고 비거나 너무 길면 Validator 가 폴백. */
+        String title,
         EnvironmentType environment,
         String requestedTime,
         Priority recommendedPriority,

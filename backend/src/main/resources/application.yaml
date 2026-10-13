@@ -30,7 +30,8 @@ server:
 
 jwt:
   secret: ${JWT_SECRET:ordo-local-dev-secret-key-must-be-at-least-32-bytes}
-  expiration-seconds: 3600
+  # 시연·리허설 중 토큰 만료로 끊기지 않도록 8시간. 운영 전환 시 재검토.
+  expiration-seconds: 28800
 
 logging:
   level:

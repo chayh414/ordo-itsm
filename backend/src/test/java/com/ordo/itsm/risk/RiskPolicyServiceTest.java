@@ -28,7 +28,7 @@ class RiskPolicyServiceTest {
         // INCIDENT 는 조기 반환 — repository/audit 가 null 이어도 호출되지 않아야 함
         RiskPolicyService svc = new RiskPolicyService(null, null, null);
         TriageResult incident = new TriageResult(
-                RequestType.INCIDENT, "SERVICE_OUTAGE", null, null,
+                RequestType.INCIDENT, "SERVICE_OUTAGE", null, null, null,
                 Priority.P2, "APPLICATION_OPERATION", "ERP",
                 null, null,
                 List.of("errorMessage"),
@@ -43,7 +43,7 @@ class RiskPolicyServiceTest {
     void inquiryRequest_returnsNull() {
         RiskPolicyService svc = new RiskPolicyService(null, null, null);
         TriageResult inquiry = new TriageResult(
-                RequestType.INQUIRY, "GENERAL_INQUIRY", null, null,
+                RequestType.INQUIRY, "GENERAL_INQUIRY", null, null, null,
                 Priority.P4, "SERVICE_DESK", null, null, null,
                 List.of(), List.of(), List.of(), List.of(), 0.9, null);
 

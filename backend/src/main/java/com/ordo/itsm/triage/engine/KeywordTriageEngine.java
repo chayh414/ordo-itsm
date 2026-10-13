@@ -119,6 +119,7 @@ public class KeywordTriageEngine implements TriageEngine {
 
         TriageResult result = new TriageResult(
                 type, category,
+                null,        // title — Validator 가 폴백으로 채운다
                 production ? EnvironmentType.PRODUCTION : null,
                 time, priority, team, service,
                 testProvided, rollbackProvided,

@@ -124,6 +124,8 @@ public class AssistantService {
                 // tool 호출 없음 & 복구 없음 → 자연어 답변으로 종료.
                 // content 에 혹시 남은 함수 호출 흔적을 한번 더 strip 해서 화면 보호.
                 String clean = ToolCallRecovery.strip(reply.content(), allowedToolNames, jsonMapper);
+                // 함수 호출 문자열을 지운 뒤 생긴 연속 빈 줄은 한 줄 공백으로 축소.
+                clean = clean.replaceAll("\\n{3,}", "\n\n").trim();
                 if (clean.isBlank()) {
                     clean = cards.isEmpty()
                             ? "요청을 이해하지 못했어요. 조금만 더 설명해 주실래요?"
@@ -170,6 +172,11 @@ public class AssistantService {
                    그대로 노출하지 말고 화면에 보이는 한글 이름을 쓴다. 예:
                    DATABASE_SCHEMA → 'DB 스키마', rollbackPlan → '롤백 절차',
                    INFO_REQUIRED → '보완 대기', night_work → '심야 작업'.
+                7) 요청자(사용자)는 요청서를 확인하고 '접수하기' 버튼을 눌러 백오피스에 등록한다.
+                   요청자에게 "승인할 수 있다" 거나 "승인하세요" 라고 말하지 않는다.
+                   승인은 운영사 승인자가 별도로 수행하는 다른 단계다.
+                8) 'UI' · '화면에서' 같은 추상적 표현 대신 "오른쪽 요청서에서" 라고 쓴다
+                   (어시스턴트 UI 는 왼쪽 대화 + 오른쪽 요청서 구조).
                 역할: """ + role.name();
     }
 }
