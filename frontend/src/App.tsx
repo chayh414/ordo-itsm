@@ -4,6 +4,7 @@ import { useAuth } from './lib/auth'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import AssistantPage from './pages/AssistantPage'
+import BackofficePage from './pages/BackofficePage'
 
 export default function App() {
   const navigate = useNavigate()
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/app" element={<AssistantPage />} />
+      <Route path="/app/backoffice" element={<BackofficePage />} />
     </Routes>
   )
 }

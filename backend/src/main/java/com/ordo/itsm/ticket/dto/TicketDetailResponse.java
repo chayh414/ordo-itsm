@@ -24,13 +24,16 @@ public record TicketDetailResponse(
         OffsetDateTime scheduledAt,
         Map<String, Object> details,
         SlaResponse sla,
+        /** 장애(INCIDENT) 요청의 1차 통보 기한. IncidentFirstResponsePolicy 로 계산. 그 외 요청은 null. */
+        OffsetDateTime firstResponseDueAt,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {
     public record Ref(Long id, String name) {
     }
 
-    public static TicketDetailResponse from(Ticket t, TicketSla sla, Map<String, Object> details) {
+    public static TicketDetailResponse from(Ticket t, TicketSla sla, Map<String, Object> details,
+                                            OffsetDateTime firstResponseDueAt) {
         return new TicketDetailResponse(
                 t.getId(),
                 t.getTicketNo(),
@@ -48,6 +51,7 @@ public record TicketDetailResponse(
                 t.getScheduledAt(),
                 details,
                 SlaResponse.from(sla),
+                firstResponseDueAt,
                 t.getCreatedAt(),
                 t.getUpdatedAt()
         );

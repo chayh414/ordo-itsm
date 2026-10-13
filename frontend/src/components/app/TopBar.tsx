@@ -8,16 +8,26 @@ import { useFontSize } from '../../lib/useFontSize'
  * 오른쪽: 글자 크기 토글 ("가 가") · 사용자명 · 소속 · 로그아웃.
  */
 
-const NAV = [
+const PROVIDER_ROLES = new Set(['OPERATOR', 'APPROVER', 'OPS_ADMIN'])
+
+interface NavItem {
+  to: string
+  label: string
+  providerOnly?: boolean
+}
+
+const NAV: NavItem[] = [
   { to: '/app', label: '어시스턴트' },
   { to: '/app/my', label: '내 요청' },
-  { to: '/app/back', label: '백오피스' },
+  { to: '/app/backoffice', label: '백오피스', providerOnly: true },
 ]
 
 export default function TopBar() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { size, setSize } = useFontSize()
+  const isProvider = user ? PROVIDER_ROLES.has(user.role) : false
+  const visibleNav = NAV.filter(n => !n.providerOnly || isProvider)
 
   return (
     <header className="h-16 border-b border-line flex items-center justify-between px-10">
@@ -27,7 +37,7 @@ export default function TopBar() {
           <img src="/logo.svg" alt="Ordo" className="block h-10 w-auto" />
         </NavLink>
         <nav className="flex items-center gap-7 ml-14 text-[0.9375rem] text-mute">
-          {NAV.map((n) => (
+          {visibleNav.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -56,7 +66,7 @@ export default function TopBar() {
           >
             가
           </button>
-          <span className="text-faint" aria-hidden>|</span>
+          <span className="text-line" aria-hidden>|</span>
           <button
             type="button"
             onClick={() => setSize('large')}

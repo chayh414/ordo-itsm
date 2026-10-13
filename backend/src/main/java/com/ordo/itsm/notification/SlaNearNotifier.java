@@ -71,13 +71,14 @@ public class SlaNearNotifier {
 
     /** 트랜잭션 분리 — audit 는 REQUIRES_NEW 로 커밋되므로 readOnly 안에서도 안전. */
     private void publish(TicketSla sla, Ticket ticket, OffsetDateTime now) {
+        // 제목에 요청 subject 포함. 하단 문구는 토스트에서 "~습니다" 체로 조립 (NotificationToast 쪽).
         NotificationEvent event = new NotificationEvent(
                 NotificationEvent.Type.SLA_NEAR,
                 ticket.getId(), ticket.getTicketNo(),
                 ticket.getTenant().getId(), ticket.getTenant().getName(),
                 ticket.getRequester().getId(),
                 ticket.getSubject(),
-                "마감까지 얼마 남지 않았어요",
+                "SLA 마감이 임박했습니다.",
                 sla.getResolutionDueAt(),
                 now
         );

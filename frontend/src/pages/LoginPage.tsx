@@ -80,7 +80,7 @@ export default function LoginPage() {
               autoFocus
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="requester@a-univ.demo"
+              placeholder="이메일 주소"
               className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
             />
           </label>
@@ -92,7 +92,7 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password123!"
+              placeholder=""
               className="w-full border-b border-line pb-2 text-[0.9375rem] placeholder:text-faint focus:border-ink focus:outline-none transition-colors"
             />
           </label>
@@ -128,7 +128,6 @@ export default function LoginPage() {
               </li>
             ))}
           </ul>
-          <p className="text-[0.75rem] text-faint mt-3">모든 시연 계정 비밀번호: Password123!</p>
         </div>
       </div>
     </div>

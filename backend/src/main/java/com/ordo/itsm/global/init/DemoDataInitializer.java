@@ -33,10 +33,13 @@ public class DemoDataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (userRepository.count() > 0) {
-            return;
+        if (userRepository.count() == 0) {
+            seedInitial();
         }
+        ensureMonitoringUsers();
+    }
 
+    private void seedInitial() {
         Tenant sysone = tenant("SYSONE");
         Tenant aUniv = tenant("A-UNIV");
         Tenant bBank = tenant("B-BANK");
@@ -61,6 +64,25 @@ public class DemoDataInitializer implements ApplicationRunner {
         }
 
         log.info("[Ordo] 시연용 계정 6개 생성 완료 (비밀번호: {})", DEMO_PASSWORD);
+    }
+
+    /**
+     * 모니터링 이벤트 수신용 시스템 계정을 테넌트별로 보장한다.
+     * - IncidentDemoController 가 장애 요청의 requester 로 사용.
+     * - 로그인 불가 (랜덤 UUID 를 bcrypt 로 인코딩 — 사실상 매치되는 raw 가 없음).
+     * - 실제 운영에선 SYSTEM 역할로 분리 예정.
+     * 이미 DB 에 시드가 있어 seedInitial 을 skip 하는 재시작 상황에서도 반드시 추가되도록 분리.
+     */
+    private void ensureMonitoringUsers() {
+        String unusableHash = passwordEncoder.encode(java.util.UUID.randomUUID().toString());
+        for (String tenantCode : new String[]{"A-UNIV", "B-BANK"}) {
+            String email = "monitoring@" + tenantCode.toLowerCase().replace("-", "_") + ".demo";
+            if (userRepository.findByEmail(email).isPresent()) continue;
+            Tenant t = tenant(tenantCode);
+            userRepository.save(User.create(t, email, unusableHash,
+                    "모니터링 이벤트 (AiWACS 연동 예정)", UserRole.REQUESTER));
+            log.info("[Ordo] 모니터링 시스템 계정 생성: {}", email);
+        }
     }
 
     private Tenant tenant(String code) {

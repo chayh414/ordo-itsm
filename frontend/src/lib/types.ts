@@ -53,8 +53,29 @@ export interface TicketDetailResponse {
   scheduledAt: string | null
   details: Record<string, unknown>
   sla: SlaResponse | null
+  /** 장애(INCIDENT) 요청의 1차 통보 기한. 그 외 요청은 null. */
+  firstResponseDueAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface RiskHistoryEntry {
+  id: number
+  score: number
+  grade: string | null
+  factorPoints: Record<string, number>
+  current: boolean
+  createdAt: string
+}
+
+export interface AuditEntry {
+  id: number
+  action: string
+  actorId: number | null
+  actorName: string
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  createdAt: string
 }
 
 export interface Evidence {

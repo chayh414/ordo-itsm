@@ -5,9 +5,11 @@ import com.ordo.itsm.audit.AuditLogService;
 import com.ordo.itsm.global.exception.BusinessException;
 import com.ordo.itsm.global.exception.ErrorCode;
 import com.ordo.itsm.global.security.AuthUser;
-import com.ordo.itsm.sla.SlaService;
+import com.ordo.itsm.sla.SlaPolicy;
+import com.ordo.itsm.sla.SlaPolicyRepository;
 import com.ordo.itsm.sla.TicketSla;
 import com.ordo.itsm.sla.TicketSlaRepository;
+import com.ordo.itsm.ticket.Priority;
 import com.ordo.itsm.tenant.Tenant;
 import com.ordo.itsm.tenant.TenantRepository;
 import com.ordo.itsm.ticket.EnvironmentType;
@@ -54,8 +56,8 @@ public class IncidentDemoController {
     private final UserRepository userRepository;
     private final TicketRepository ticketRepository;
     private final TicketSlaRepository ticketSlaRepository;
+    private final SlaPolicyRepository slaPolicyRepository;
     private final TicketNumberGenerator ticketNumberGenerator;
-    private final SlaService slaService;
     private final AuditLogService auditLogService;
     private final SseNotificationService sseNotificationService;
     private final IncidentFirstResponsePolicy incidentPolicy;
@@ -66,8 +68,8 @@ public class IncidentDemoController {
             UserRepository userRepository,
             TicketRepository ticketRepository,
             TicketSlaRepository ticketSlaRepository,
+            SlaPolicyRepository slaPolicyRepository,
             TicketNumberGenerator ticketNumberGenerator,
-            SlaService slaService,
             AuditLogService auditLogService,
             SseNotificationService sseNotificationService,
             IncidentFirstResponsePolicy incidentPolicy) {
@@ -76,8 +78,8 @@ public class IncidentDemoController {
         this.userRepository = userRepository;
         this.ticketRepository = ticketRepository;
         this.ticketSlaRepository = ticketSlaRepository;
+        this.slaPolicyRepository = slaPolicyRepository;
         this.ticketNumberGenerator = ticketNumberGenerator;
-        this.slaService = slaService;
         this.auditLogService = auditLogService;
         this.sseNotificationService = sseNotificationService;
         this.incidentPolicy = incidentPolicy;
@@ -100,10 +102,19 @@ public class IncidentDemoController {
         Tenant tenant = tenantRepository.findByCode(request.tenantCode().trim())
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED,
                         "존재하지 않는 고객사 코드: " + request.tenantCode()));
-        // 실제 운영에선 AiWACS 시스템 계정이 자동으로 요청자가 됨. 시연에선 해당 테넌트의 아무 요청자로 매핑.
-        User requester = userRepository.findFirstByTenant_IdAndRole(tenant.getId(), UserRole.REQUESTER)
+        // 실제 운영에선 AiWACS 이벤트의 시스템 계정이 자동으로 requester 로 들어온다.
+        // 시연에선 테넌트별 monitoring@{code}.demo (DemoDataInitializer 가 미리 생성, 로그인 불가) 를 사용.
+        String code = tenant.getCode().toLowerCase().replace("-", "_");
+        User requester = userRepository.findByEmail("monitoring@" + code + ".demo")
                 .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED,
-                        "해당 고객사에 요청자 계정이 없습니다: " + request.tenantCode()));
+                        "모니터링 시스템 계정이 없는 테넌트: " + request.tenantCode()));
+
+        // 실제 운영에선 AiWACS 이벤트가 심각도를 들고 오는 것과 같은 구조.
+        // severity 가 비면 P2 (응답 30분·해결 8시간) 를 기본으로 적용.
+        Priority severity = request.severity() != null ? request.severity() : Priority.P2;
+        SlaPolicy policy = slaPolicyRepository.findByTenant_IdAndPriority(tenant.getId(), severity)
+                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_FAILED,
+                        "해당 테넌트에 " + severity + " SLA 정책이 없습니다."));
 
         String subject = "[장애] " + request.service().trim();
         String originalRequest = request.service().trim() + " 장애. " + request.summary().trim();
@@ -113,14 +124,16 @@ public class IncidentDemoController {
         ticket.applyTriage(RequestType.INCIDENT, "SERVICE_OUTAGE",
                 EnvironmentType.PRODUCTION, request.service().trim());
         ticket = ticketRepository.save(ticket);
-
-        TicketSla sla = slaService.start(ticket);
+        // SlaService.start 는 provisional=P3 로 고정이라 severity 반영을 위해 여기서 직접 생성.
+        TicketSla sla = ticketSlaRepository.save(
+                TicketSla.start(ticket, policy, ticket.getCreatedAt()));
 
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("ticketNo", ticket.getTicketNo());
         after.put("tenantCode", tenant.getCode());
         after.put("service", request.service().trim());
         after.put("summary", request.summary().trim());
+        after.put("severity", severity.name());
         after.put("source", "DEMO_INCIDENT");
         auditLogService.record(AuditAction.EVENT_RECEIVED, user, tenant.getId(), ticket.getId(), null, after);
 
@@ -183,7 +196,9 @@ public class IncidentDemoController {
     public record IncidentDemoRequest(
             @NotBlank String tenantCode,
             @NotBlank String service,
-            @NotBlank String summary
+            @NotBlank String summary,
+            /** 실제 운영에선 AiWACS 이벤트가 심각도를 들고 오는 것과 같은 구조. 미지정 시 P2. */
+            Priority severity
     ) {}
 
     public record IncidentDemoResponse(

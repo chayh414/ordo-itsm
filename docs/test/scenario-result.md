@@ -25,6 +25,7 @@ Validator 수정 (CHANGE 전체 rollback/test 동기 + IP 2개면 재질문 제�
 
 - **A3** — 변경 요청 / 계정 권한 (DB_PERMISSION or ACCOUNT): 모델이 `requestType=SERVICE_REQUEST + category=ACCOUNT` 로 분류해 CHANGE 룰이 적용 안 되고 점수 계산도 안 됨. "운영 DB 성적 테이블 조회 권한" 을 변경이 아닌 서비스 요청으로 본 셈. 분류 재조정 범위가 커서 손대지 않음.
 - **A2 분류 — 2-1 삭제 (의도):** 입력에 "방화벽" 단어가 없으면 `NETWORK` 로 분류됨. 점수 영향 없음(FIREWALL·NETWORK 둘 다 +3), 테스트 깨질 위험만 있어 분류 보강은 하지 않기로 결정.
+- **대화로 신고한 장애는 우선순위 자동 판단 안 함** — A7("수강신청 사이트 502 오류") 같은 어시스턴트 대화 입력은 `SlaService.PROVISIONAL_PRIORITY = P3` 로 임시 세팅되어 해결 기한이 3일. 반면 모니터링 이벤트 입력(POST /api/demo/incidents)은 `severity` 필드로 심각도를 받아 P2 등으로 생성됨 (실제 운영에서 AiWACS 이벤트가 심각도를 들고 오는 흐름). 대화 신고에 심각도 추론·운영자 확정 흐름은 미구현.
 
 ## 수정 전 — 2026-10-13 15:25 측정 (참고)
 

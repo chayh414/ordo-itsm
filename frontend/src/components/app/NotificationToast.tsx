@@ -26,7 +26,15 @@ function headlineOf(event: NotificationEvent): string {
   if (event.type === 'INCIDENT_CREATED') {
     return `${event.tenantName} · ${event.title}`
   }
-  return `SLA 마감 임박 · ${event.ticketNo}`
+  return 'SLA 마감이 임박했습니다'
+}
+
+function subtitleOf(event: NotificationEvent): string {
+  if (event.type === 'INCIDENT_CREATED') {
+    return event.summary
+  }
+  // SLA_NEAR: 요청 제목 + 번호
+  return `${event.ticketNo} · ${event.title}`
 }
 
 function dueLabel(event: NotificationEvent): string {
@@ -58,9 +66,7 @@ export default function NotificationToast({ event, onDismiss, onOpen }: Props) {
                 className="text-[13px] text-mute hover:text-ink"
                 aria-label="알림 닫기">닫기</button>
       </div>
-      {event.summary && (
-        <div className="mt-1 text-[14px] text-body">{event.summary}</div>
-      )}
+      <div className="mt-1 text-[14px] text-body">{subtitleOf(event)}</div>
       <div className="mt-3 flex items-center justify-between text-[13px] text-mute">
         <span>
           {dueLabel(event)}{' '}
