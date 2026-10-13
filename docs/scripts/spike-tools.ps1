@@ -21,13 +21,46 @@ if (Test-Path $logPath) { Remove-Item $logPath -Force }
 
 # ---- 시스템 프롬프트 (운영 어시스턴트 톤의 축소판) ------------------
 $systemPrompt = @'
-너는 사내 IT 운영 어시스턴트다. 다음 원칙을 지킨다.
-1) 사용자가 "요청/등록/접수해줘"라고 명확히 등록을 원할 때만 create_request 를 호출한다. "어떻게 해야 해?" "방법 알려줘" 같은 질문엔 도구 없이 자연어로만 설명한다.
-2) 과거 요청 목록을 묻는 질문엔 list 계열 도구(list_my_requests 또는 list_requests)를 호출한다.
-3) 특정 티켓번호(ORD-YYYYMMDD-NNNN)의 상태를 묻는 질문엔 get_request 를 그대로 호출한다. 티켓번호를 지어내지 않는다.
-4) 도구에 전달하는 인자는 사용자 원문을 기반으로 하며, 임의로 요약하거나 꾸미지 않는다.
-5) tenantId · userId 같은 권한 정보는 절대 전달하지 않는다.
-6) 현재 노출된 도구 목록에 없는 도구는 호출을 시도하지 말고, 자연어로 안내한다.
+너는 시스원 사내 IT 운영 어시스턴트다. Ordo 컨셉은 "양식 없이 평소 말하듯 요청" 이므로
+사용자가 "등록해줘" 같은 명시적 요청어를 붙이지 않아도 요청 의도를 적극적으로 알아듣는다.
+
+[결정 트리 — 반드시 이 순서로 판단]
+
+1. 질문 신호가 있는가? ("보통 어떻게", "~려면", "방법", "뭐가 필요", "~가능해?",
+   "~해도 돼?", "~알려줘", 끝에 "?") 그리고 본인이 지금 그 작업을 하려는 구체적 정보
+   (대상 이름·시간·장비 등)가 없는가? → 도구 없이 설명. create_request 금지.
+2. 과거 요청 목록을 묻는가? → list_my_requests / list_requests
+3. 특정 티켓번호(ORD-YYYYMMDD-NNNN) 상태를 묻는가? → get_request
+4. 본인이 "지금/오늘/이번에" 하려는 작업 또는 겪고 있는 장애를 구체적으로 말하는가?
+   → create_request
+
+create_request 호출 조건 (아래 중 2개 이상 있을 때 안전):
+  · 작업 대상이 특정됨: "학생 포털 테이블", "3306 포트", "ERP 서버" 등 고유 이름
+  · 작업 시점이 특정됨: "오늘 23시", "내일 오전"
+  · 본인 액션 표현: "~하려고요", "~해주세요", "~할 예정", "~이 안 돼요"
+  · 장애 증상: 접속 불가, 에러 메시지, "먹통", "느려요"
+
+일반 호기심("보통 어떻게", "~하려면 뭐가 필요")은 작업 대상이 추상적("방화벽 포트",
+"서버")이고 시점·본인 액션이 없으므로 create 하지 않는다.
+
+[예시 — 정답 외우기]
+  · "오늘 23시에 운영 DB 학생 포털 테이블에 컬럼 추가하려고요. 테스트는 했는데 롤백 절차는 아직 없어요."
+     → create_request  (대상+시점+"~하려고요")
+  · "ERP 접속이 안 되고 영업팀 전체가 주문 입력을 못 하고 있어요"
+     → create_request  (장애 증상)
+  · "방화벽 포트 열려면 보통 어떻게 해야 해?"
+     → 도구 없이 설명 ("보통 어떻게" + "~려면" = 질문)
+  · "방화벽 오픈 요청은 뭐가 필요해?"
+     → 도구 없이 설명 ("뭐가 필요" = 질문)
+  · "내 요청 어떻게 됐어?"
+     → list_my_requests
+  · "ORD-20261013-0003 어디까지 됐어?"
+     → get_request
+
+[규칙]
+- 도구에 전달하는 인자는 사용자 원문 기반, 임의 요약·꾸밈 금지.
+- tenantId · userId 같은 권한 정보는 절대 전달하지 않는다.
+- 현재 노출된 도구 목록에 없는 도구는 호출을 시도하지 말고, 자연어로 안내한다.
 '@
 
 # ---- 도구 스펙 (REQUESTER 역할용 3종) ------------------------------
@@ -177,8 +210,23 @@ $scenarios = @(
         ExpectedTool = "list_requests"
         ArgCheck = { param($a) ($a.status -eq "INFO_REQUIRED") -or ($a.status -eq $null) }
         Note = "공급사 측 — list_requests(status=INFO_REQUIRED). 테넌트 필터는 서버 scope 가 처리하므로 arg 로 못 받음"
+    },
+    [pscustomobject]@{
+        Id = 8
+        ToolSet = "REQUESTER"
+        Prompt = "오늘 23시에 운영 DB 학생 포털 테이블에 컬럼 추가하려고요. 테스트는 했는데 롤백 절차는 아직 없어요."
+        ExpectedTool = "create_request"
+        ArgCheck = { param($a) ($a.text -ne $null) -and ($a.text.Length -ge 15) }
+        Note = "대표 시연 문장 — '등록해줘' 없이도 반드시 create_request 로 가야 함 (Ordo '평소 말하듯' 컨셉)"
     }
 )
+
+# ORDO_SPIKE_IDS="1,6,8" 환경변수로 특정 시나리오만 돌릴 수 있다 (프롬프트 수정 후 핵심만 재검증용).
+if ($env:ORDO_SPIKE_IDS) {
+    $idList = $env:ORDO_SPIKE_IDS -split "," | ForEach-Object { [int]($_.Trim()) }
+    $scenarios = $scenarios | Where-Object { $idList -contains $_.Id }
+    Write-Host ("필터 적용: ORDO_SPIKE_IDS = " + ($idList -join ",")) -ForegroundColor DarkGray
+}
 
 # ---- LLM 호출 함수 ------------------------------------------------
 function Invoke-ToolChat {

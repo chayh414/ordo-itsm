@@ -269,8 +269,8 @@ public class TriageValidator {
             confidence = 0.6;
         }
 
-        // 9) title 폴백 — AI 가 안 줬거나 20자 초과면 "service + category" 조합으로 채운다.
-        String title = resolveTitle(r.title(), blankToNull(r.affectedService()), category);
+        // 9) title 폴백 — AI title 에 작업 동사 없거나 20자 초과면 원문의 작업구로 재구성.
+        String title = resolveTitle(r.title(), blankToNull(r.affectedService()), category, text);
 
         return new TriageResult(
                 requestType, category, title,
@@ -283,12 +283,40 @@ public class TriageValidator {
         );
     }
 
-    /** AI title 이 비거나 너무 길면 "service + category" 또는 category 로 폴백. */
-    private static String resolveTitle(String aiTitle, String service, String category) {
+    /** title 에 들어가야 할 작업 동사들. 하나라도 포함돼야 "무엇을 하는지" 가 명확. */
+    private static final Pattern TITLE_VERBS = Pattern.compile(
+            "추가|변경|삭제|제거|오픈|열기|닫기|생성|부여|회수|수정|적용|복구|점검|이관|배포|승인|이전|확인|조회|신청|신고|해제|차단|허용|전환|재시작|재부팅|증설|축소|이동|권한");
+
+    /** 원문에서 "N{작업동사}" 패턴의 작업구를 뽑는다 (title 폴백용). 예: "컬럼 추가", "포트 오픈", "권한 부여". */
+    private static final Pattern WORK_PHRASE = Pattern.compile(
+            "(\\S{1,8}\\s?(?:추가|변경|삭제|제거|오픈|열기|닫기|생성|부여|회수|수정|적용|복구|점검|이관|배포|승인|이전|확인|조회|신청|신고|해제|차단|허용|전환|재시작|재부팅|증설|축소))");
+
+    /**
+     * title 폴백:
+     *   1) AI 가 준 title 이 20자 이내 + 작업 동사 포함 → 그대로 사용
+     *   2) 그 외: 원문에서 작업구(예 "컬럼 추가") 추출 → "{service} {작업구}"
+     *   3) 작업구도 못 찾으면 "{service} {category}" → category → "요청" 순 폴백
+     */
+    private static String resolveTitle(String aiTitle, String service, String category, String text) {
         if (aiTitle != null) {
             String t = aiTitle.trim();
-            if (!t.isEmpty() && t.length() <= 20) return t;
+            if (!t.isEmpty() && t.length() <= 20 && TITLE_VERBS.matcher(t).find()) {
+                return t;
+            }
         }
+        // 원문에서 작업구 추출
+        if (text != null && !text.isBlank()) {
+            Matcher m = WORK_PHRASE.matcher(text);
+            if (m.find()) {
+                String phrase = m.group(1).replaceAll("\\s+", " ").trim();
+                if (service != null && !service.isBlank()) {
+                    String combo = (service.trim() + " " + phrase).trim();
+                    return combo.length() > 20 ? combo.substring(0, 20).trim() : combo;
+                }
+                return phrase.length() > 20 ? phrase.substring(0, 20).trim() : phrase;
+            }
+        }
+        // 작업구 없음 → service + category
         String catKo = TriageLabels.category(category);
         if (service != null && !service.isBlank() && catKo != null && !catKo.isBlank()) {
             String combo = service.trim() + " " + catKo;
@@ -313,17 +341,49 @@ public class TriageValidator {
         FACTOR_EVIDENCE_PATTERNS = Map.copyOf(m);
     }
 
+    /**
+     * 원문에서 요인 근거 스니펫을 뽑되 단어 중간 · 조사("는데"·"가"·"를") 로 시작하지 않도록
+     * 공백·구두점 어절 경계에 맞춰 자른다.
+     */
     private static String findEvidenceSnippet(String factor, String text) {
         if (text == null || text.isBlank()) return "";
         Pattern p = FACTOR_EVIDENCE_PATTERNS.get(factor);
         if (p == null) return "";
         Matcher m = p.matcher(text);
         if (!m.find()) return "";
-        int s = Math.max(0, m.start() - 3);
-        int e = Math.min(text.length(), m.end() + 12);
+
+        // 왼쪽 경계: 매치 지점이 속한 어절의 시작까지 (공백/구두점을 만나면 거기서 멈춤)
+        int s = m.start();
+        while (s > 0 && !isWordBoundary(text.charAt(s - 1))) s--;
+
+        // 오른쪽: 매치 이후 어절 2개까지 늘림 (너무 길어지지 않게)
+        int e = m.end();
+        int extraWords = 0;
+        boolean inWord = (e < text.length() && !isWordBoundary(text.charAt(e)));
+        while (e < text.length() && extraWords < 2) {
+            char c = text.charAt(e);
+            if (isWordBoundary(c)) {
+                if (inWord) extraWords++;
+                inWord = false;
+            } else {
+                inWord = true;
+            }
+            e++;
+        }
+        // 어절 중간에서 끝났으면 그 어절 끝까지 포함
+        while (e < text.length() && !isWordBoundary(text.charAt(e))) e++;
+
         String snippet = text.substring(s, e).replaceAll("[\\n\\r]+", " ").trim();
-        if (snippet.length() > 20) snippet = snippet.substring(0, 20).trim();
+        if (snippet.length() > 20) {
+            snippet = snippet.substring(0, 20);
+            int lastSpace = snippet.lastIndexOf(' ');
+            if (lastSpace > 5) snippet = snippet.substring(0, lastSpace).trim();
+        }
         return snippet;
+    }
+
+    private static boolean isWordBoundary(char c) {
+        return Character.isWhitespace(c) || ".,;!?()[]{}:\"'".indexOf(c) >= 0;
     }
 
     /** AI FALSE면 [FILL], AI null/TRUE + 원문 부정이면 [FIX]로 분기해 missing/factor를 보완. */
