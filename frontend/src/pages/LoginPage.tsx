@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { ApiError } from '../lib/api'
+import { usePageTitle } from '../lib/usePageTitle'
 
 /*
  * /login — 디자인 가이드 v3 기준.
@@ -19,6 +20,7 @@ const DEMO_ACCOUNTS = [
 const DEMO_PASSWORD = 'Password123!'
 
 export default function LoginPage() {
+  usePageTitle('로그인 · Ordo')
   const navigate = useNavigate()
   const { login, token } = useAuth()
   const [email, setEmail] = useState('')

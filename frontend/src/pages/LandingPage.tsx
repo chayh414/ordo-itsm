@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { MotionConfig } from 'framer-motion'
 import Lenis from 'lenis'
+import { usePageTitle } from '../lib/usePageTitle'
 import Header from '../components/landing/Header'
 import HeroSection from '../components/landing/HeroSection'
 import IntroSection from '../components/landing/IntroSection'
@@ -11,6 +12,8 @@ import Marquee from '../components/landing/Marquee'
 import Footer from '../components/landing/Footer'
 
 export default function LandingPage() {
+  usePageTitle('Ordo')
+
   // Lenis 스무스 스크롤. prefers-reduced-motion 이면 활성화하지 않음.
   useEffect(() => {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches

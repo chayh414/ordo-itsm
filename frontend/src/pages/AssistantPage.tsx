@@ -5,6 +5,7 @@ import ChatPanel, { type UiMessage } from '../components/app/ChatPanel'
 import DocPanel from '../components/app/DocPanel'
 import { useAuth } from '../lib/auth'
 import { api, ApiError } from '../lib/api'
+import { usePageTitle } from '../lib/usePageTitle'
 import type {
   AssistantCard,
   AssistantCardCreate,
@@ -25,6 +26,7 @@ import type {
 const PROVIDER_ROLES = ['OPERATOR', 'APPROVER', 'OPS_ADMIN']
 
 export default function AssistantPage() {
+  usePageTitle('어시스턴트 · Ordo')
   const { token, user } = useAuth()
 
   // 모든 Hook 은 조건부 분기 전에 (리액트 Hook 규칙)
