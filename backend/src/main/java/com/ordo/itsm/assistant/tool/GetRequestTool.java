@@ -63,14 +63,19 @@ public class GetRequestTool implements AssistantTool {
         }
 
         StringBuilder llm = new StringBuilder();
-        llm.append(detail.ticketNo()).append(" — 상태=").append(detail.status())
-                .append(", 분류=").append(detail.category() == null ? "미확정" : detail.category());
+        llm.append(detail.ticketNo()).append(" — 상태: ")
+                .append(com.ordo.itsm.triage.TriageLabels.status(detail.status() == null ? null : detail.status().name()))
+                .append(", 분류: ")
+                .append(detail.category() == null ? "미확정" : com.ordo.itsm.triage.TriageLabels.category(detail.category()));
         if (detail.sla() != null) {
-            llm.append(", 해결기한=").append(detail.sla().resolutionDueAt());
-            if (detail.sla().paused()) llm.append(" (SLA 정지)");
+            llm.append(", 해결 기한: ").append(detail.sla().resolutionDueAt());
+            if (detail.sla().paused()) llm.append(" (SLA 정지 중)");
         }
         if (triage != null && triage.result() != null && !triage.result().missingFields().isEmpty()) {
-            llm.append(", 누락 정보=").append(String.join(",", triage.result().missingFields()));
+            String missing = triage.result().missingFields().stream()
+                    .map(com.ordo.itsm.triage.TriageLabels::field)
+                    .collect(java.util.stream.Collectors.joining(", "));
+            llm.append(". 보완이 필요한 내용: ").append(missing);
         }
 
         Map<String, Object> card = new LinkedHashMap<>();

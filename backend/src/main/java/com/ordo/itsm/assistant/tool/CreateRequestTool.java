@@ -64,14 +64,27 @@ public class CreateRequestTool implements AssistantTool {
         TriageResponse triage = triageService.run(user, created.id());
 
         StringBuilder llm = new StringBuilder();
-        llm.append("임시 티켓 ").append(created.ticketNo()).append(" 을(를) 생성했습니다. ");
+        llm.append("임시 요청서 ").append(created.ticketNo()).append(" 을 작성했습니다. ");
         if (triage.result() != null) {
-            llm.append("분류=").append(triage.result().category());
+            llm.append("분류: ").append(com.ordo.itsm.triage.TriageLabels.category(triage.result().category()));
             if (!triage.result().missingFields().isEmpty()) {
-                llm.append(", 누락 정보=").append(String.join(",", triage.result().missingFields()));
+                String missing = triage.result().missingFields().stream()
+                        .map(com.ordo.itsm.triage.TriageLabels::field)
+                        .collect(java.util.stream.Collectors.joining(", "));
+                llm.append(". 추가로 확인이 필요한 내용: ").append(missing);
             }
         }
-        llm.append(". 사용자가 [접수하기] 를 눌러야 실제 접수됩니다.");
+        if (triage.riskGrade() != null && triage.riskScore() != null) {
+            String grade = switch (triage.riskGrade().name()) {
+                case "LOW" -> "낮음";
+                case "MEDIUM" -> "보통";
+                case "HIGH" -> "높음";
+                case "CRITICAL" -> "매우 높음";
+                default -> triage.riskGrade().name();
+            };
+            llm.append(". 위험도: ").append(grade).append(" (").append(triage.riskScore()).append("점)");
+        }
+        llm.append(". 접수하기 버튼을 눌러야 백오피스에 실제 등록됩니다.");
 
         Map<String, Object> card = new LinkedHashMap<>();
         card.put("ticket", created);

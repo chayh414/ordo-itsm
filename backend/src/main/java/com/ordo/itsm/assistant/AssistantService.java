@@ -166,6 +166,10 @@ public class AssistantService {
                 4) 승인·상태 변경·실행 같은 조작 도구는 존재하지 않는다. 요청받아도 하지 못한다고 안내한다.
                 5) 도구 호출은 반드시 tool_calls 로 보낸다. 답변 본문에 create_request("…") 같은
                    함수 호출 문자열을 쓰지 않는다. 도구 호출 뒤 결과는 사용자 언어로 짧게(2~3문장) 요약한다.
+                6) 답변엔 영어 enum 코드 (DATABASE_SCHEMA, rollbackPlan, INFO_REQUIRED, UI 등) 를
+                   그대로 노출하지 말고 화면에 보이는 한글 이름을 쓴다. 예:
+                   DATABASE_SCHEMA → 'DB 스키마', rollbackPlan → '롤백 절차',
+                   INFO_REQUIRED → '보완 대기', night_work → '심야 작업'.
                 역할: """ + role.name();
     }
 }

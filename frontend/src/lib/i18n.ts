@@ -128,3 +128,67 @@ export function formatRequestedTime(hhmm: string | null | undefined): string {
   if (!hhmm) return '—'
   return `오늘 ${hhmm}`
 }
+
+/**
+ * 백엔드 TriageValidator 가 만든 보정 로그 ("[FIX] riskFactor+... (reason)") 를
+ * 화면 노출용 사람 말로 변환. 접두사([FIX]/[FILL]/[NORM]/[SUP]) 와 영어 키를 숨긴다.
+ * 매칭 실패 시 원문 그대로 돌려주어 안전 장치.
+ */
+export function formatCorrection(raw: string): string {
+  if (!raw) return ''
+
+  // 1) requestType 보정
+  let m = raw.match(/^\[FIX\]\s*requestType=([A-Z_]+)→([A-Z_]+)/)
+  if (m) {
+    return `AI 가 '${label.requestType(m[1])}' 로 봤는데 '${label.requestType(m[2])}' 로 바로잡았어요`
+  }
+
+  // 2) 위험 요인 추가/제거
+  m = raw.match(/^\[(FIX|FILL)\]\s*riskFactor\+([a-z_]+)/)
+  if (m) {
+    return `AI 가 놓친 '${label.riskFactor(m[2])}' 위험 요인을 규칙으로 추가했어요`
+  }
+  m = raw.match(/^\[FIX\]\s*riskFactor-([a-z_]+)/)
+  if (m) {
+    return `원문 근거가 확실해서 '${label.riskFactor(m[1])}' 위험 요인을 제거했어요`
+  }
+
+  // 3) 누락 필드
+  m = raw.match(/^\[(FIX|FILL)\]\s*missingField\+([a-zA-Z]+)/)
+  if (m) {
+    return `'${label.field(m[2])}' 가 비어 있어 확인이 필요합니다`
+  }
+  m = raw.match(/^\[FIX\]\s*missingField-([a-zA-Z]+)/)
+  if (m) {
+    return `원문에 '${label.field(m[1])}' 근거가 있어 보완 요청에서 뺐어요`
+  }
+
+  // 4) 작업 예정 시각
+  m = raw.match(/^\[FIX\]\s*requestedTime=?:?\s*([^→]+)→null/)
+  if (m) {
+    return '원문에 작업 시각 근거가 없어 작업 예정 시간을 비웠어요'
+  }
+  m = raw.match(/^\[FIX\]\s*requestedTime[:=]\s*(\d{2}:\d{2})→(\d{2}:\d{2})/)
+  if (m) {
+    return `작업 예정 시간을 원문 기준으로 ${m[1]} → ${m[2]} 로 바로잡았어요`
+  }
+
+  // 5) 확신도 하향
+  if (/^\[FIX\]\s*confidence/.test(raw)) {
+    return '보정이 있어 담당자가 한 번 더 확인합니다'
+  }
+
+  // 6) [NORM] factors cleared
+  if (/^\[NORM\]\s*riskFactors cleared/.test(raw)) {
+    return '장애·문의 유형이라 변경 전용 위험 요인은 비웠어요'
+  }
+
+  // 7) [SUP] 고객 보완
+  m = raw.match(/^\[SUP\]\s*([a-zA-Z]+)\s*고객 보완/)
+  if (m) {
+    return `'${label.field(m[1])}' 를 고객이 보완했어요`
+  }
+
+  // 매칭 실패 — 접두사만 떼고 돌려줌
+  return raw.replace(/^\[(FIX|FILL|NORM|SUP)\]\s*/, '')
+}

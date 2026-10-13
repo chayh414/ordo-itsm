@@ -62,7 +62,9 @@ public class ListRequestsTool implements AssistantTool {
         StringBuilder llm = new StringBuilder();
         llm.append("최신 ").append(page.content().size()).append("건 — ");
         List<String> items = page.content().stream()
-                .map(t -> "[" + t.ticketNo() + " " + t.tenantName() + " " + t.status() + "] " + t.subject())
+                .map(t -> "[" + t.ticketNo() + " · " + t.tenantName() + " · "
+                        + com.ordo.itsm.triage.TriageLabels.status(t.status() == null ? null : t.status().name())
+                        + "] " + t.subject())
                 .toList();
         llm.append(String.join(" / ", items));
         return ToolResult.ok(llm.toString(), page);

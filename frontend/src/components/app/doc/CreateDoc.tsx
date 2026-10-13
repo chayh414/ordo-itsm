@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AssistantCardCreate, RiskGrade } from '../../../lib/types'
-import { formatRequestedTime, label } from '../../../lib/i18n'
+import { formatCorrection, formatRequestedTime, label } from '../../../lib/i18n'
 
 /*
  * create_request 결과 요청서 (디자인 가이드 v3 + 사용자 재배치 요구).
@@ -261,7 +261,7 @@ function CollapsibleCorrections({ corrections }: { corrections: string[] }) {
       {open && (
         <div className="mt-3 text-[0.9375rem] text-mute leading-[1.75]">
           {corrections.map((c, i) => (
-            <div key={i}>{c}</div>
+            <div key={i}>— {formatCorrection(c)}</div>
           ))}
           <div className="mt-2 text-[0.875rem]">보정이 있었던 요청은 담당자가 한 번 더 검토합니다.</div>
         </div>
