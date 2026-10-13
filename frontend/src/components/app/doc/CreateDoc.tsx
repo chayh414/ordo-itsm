@@ -72,7 +72,7 @@ export default function CreateDoc({
 
   return (
     <article className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[57.5rem] px-16 pt-9 pb-0 min-h-full flex flex-col">
+      <div className="max-w-[57.5rem] px-16 pt-9 pb-0 min-h-full flex flex-col">
         {/* ① 상단 메타 */}
         <div className="flex justify-between items-baseline">
           <span className="text-[0.875rem] text-mute">{headerText}</span>
@@ -83,7 +83,7 @@ export default function CreateDoc({
 
         {/* ② 제목 */}
         <h1 className="text-[2.125rem] leading-[1.3] font-bold tracking-[-0.015em] mt-4 mb-5">
-          {documentTitle(result?.category, result?.affectedService)}
+          {documentTitle(result?.title, result?.category, result?.affectedService)}
         </h1>
 
         {/* ③ 핵심 요약 한 줄 */}
@@ -371,7 +371,14 @@ function Section({
   )
 }
 
-function documentTitle(category: string | undefined | null, service: string | null | undefined): string {
+function documentTitle(
+  aiTitle: string | undefined | null,
+  category: string | undefined | null,
+  service: string | null | undefined,
+): string {
+  // Validator 가 항상 title 을 채워주지만, 혹시 비어 있거나 과거 레코드면 폴백.
+  const t = aiTitle?.trim()
+  if (t) return t
   const cat = label.category(category)
   const svc = service?.trim()
   if (svc && cat !== '—') return `${svc} ${cat}`

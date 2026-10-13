@@ -128,25 +128,30 @@ export default function ChatPanel({ messages, loading, error, onSend, onRetry }:
         )}
       </div>
 
-      <form onSubmit={submit} className="border-t border-line px-10 py-4 flex items-end gap-4">
-        <textarea
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="메시지를 입력하세요 (Enter 보내기 · Shift+Enter 줄바꿈)"
-          rows={1}
-          disabled={loading}
-          className="flex-1 resize-none text-[0.9375rem] leading-[1.6] py-2.5 placeholder:text-mute focus:outline-none disabled:opacity-50 bg-transparent"
-        />
-        <button
-          type="submit"
-          disabled={loading || !draft.trim()}
-          className="h-11 px-5 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-        >
-          보내기
-        </button>
-      </form>
+      <div className="border-t border-line">
+        <form onSubmit={submit} className="px-10 pt-4 flex items-end gap-4">
+          <textarea
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="메시지를 입력하세요"
+            rows={1}
+            disabled={loading}
+            className="flex-1 resize-none text-[0.9375rem] leading-[1.6] py-2.5 placeholder:text-mute focus:outline-none disabled:opacity-50 bg-transparent"
+          />
+          <button
+            type="submit"
+            disabled={loading || !draft.trim()}
+            className="h-11 px-5 bg-ink text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            보내기
+          </button>
+        </form>
+        <div className="px-10 pb-3 text-[0.875rem] text-mute">
+          Shift+Enter 로 줄바꿈
+        </div>
+      </div>
     </section>
   )
 }

@@ -20,7 +20,7 @@ const DEMO_ACCOUNTS = [
 const DEMO_PASSWORD = 'Password123!'
 
 export default function LoginPage() {
-  usePageTitle('로그인 · Ordo')
+  usePageTitle('Ordo')
   const navigate = useNavigate()
   const { login, token } = useAuth()
   const [email, setEmail] = useState('')

@@ -15,7 +15,7 @@ interface Props {
 export default function ListDoc({ page, showTenant }: Props) {
   return (
     <article className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[57.5rem] px-16 pt-9 pb-10">
+      <div className="max-w-[57.5rem] px-16 pt-9 pb-10">
         <div className="flex justify-between items-baseline mb-7">
           <span className="text-[0.875rem] text-mute">요청 목록 · {page.totalElements}건</span>
         </div>

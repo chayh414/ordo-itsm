@@ -45,6 +45,11 @@ export async function api<T = unknown>(path: string, opts: ApiRequestOptions = {
       const raw = (json as Record<string, unknown>).message
       if (typeof raw === 'string' && raw.length > 0) message = raw
     }
+    // 401 → 전역 핸들러에 통지 (App 에서 logout + /login + 안내)
+    // 로그인 자체는 /api/auth/login 경로이므로 그 경로는 제외해 재입력 중 알림 폭주 방지.
+    if (res.status === 401 && !path.startsWith('/api/auth/login')) {
+      try { window.dispatchEvent(new CustomEvent('ordo:unauthorized')) } catch { /* SSR */ }
+    }
     throw new ApiError(res.status, message, json)
   }
 

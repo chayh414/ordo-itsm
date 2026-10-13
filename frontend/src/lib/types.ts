@@ -65,6 +65,8 @@ export interface Evidence {
 export interface TriageResult {
   requestType: string
   category: string
+  /** "학생 포털 DB 컬럼 추가" 같은 20자 이내 요약. Validator 가 폴백해 항상 채워져 있다. */
+  title: string | null
   environment: string | null
   requestedTime: string | null
   recommendedPriority: string

@@ -89,6 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState(next)
     },
     logout() {
+      // 사용자별 대화·요청서 세션 캐시도 함께 정리.
+      try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const k = sessionStorage.key(i)
+          if (k && k.startsWith('ordo.session.')) sessionStorage.removeItem(k)
+        }
+      } catch { /* ignore */ }
       write({ token: null, user: null })
       setState({ token: null, user: null })
     },

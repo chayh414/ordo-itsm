@@ -9,11 +9,13 @@ import { usePageTitle } from '../lib/usePageTitle'
 import type {
   AssistantCard,
   AssistantCardCreate,
+  AssistantCardGet,
   ChatRequest,
   ChatResponse,
   RiskGrade,
   SupplementResponse,
   TicketDetailResponse,
+  TriageResponse,
 } from '../lib/types'
 
 /*
@@ -23,15 +25,27 @@ import type {
  * - history 는 stateless: 매번 그동안의 user/assistant 턴을 재전송
  * - 서버에서 받은 cards 중 가장 최근 것을 DocPanel 에 표시
  * - create_request 카드일 때만 접수하기/취소 버튼 활성
+ *
+ * 세션 복원:
+ *   - 대화 이력·현재 요청서 상태를 sessionStorage.ordo.session.{userId} 에 저장
+ *   - 새로고침·HMR 재마운트 시 messages/supplementedAnswers/prevRisk 는 그대로 복원
+ *   - 요청서는 저장된 ticketId 로 서버에서 다시 조회 (접수됐거나 점수가 바뀌었을 수 있음)
+ *   - 로그아웃 시 세션 키 삭제 (auth.tsx 에서 처리)
  */
 
 const PROVIDER_ROLES = ['OPERATOR', 'APPROVER', 'OPS_ADMIN']
 
+function cardTicketId(c: AssistantCard | null): number | undefined {
+  if (!c) return undefined
+  if (c.tool === 'create_request') return (c.data as AssistantCardCreate).ticket.id
+  if (c.tool === 'get_request') return (c.data as AssistantCardGet).ticket.id
+  return undefined
+}
+
 export default function AssistantPage() {
-  usePageTitle('어시스턴트 · Ordo')
+  usePageTitle('Ordo')
   const { token, user } = useAuth()
 
-  // 모든 Hook 은 조건부 분기 전에 (리액트 Hook 규칙)
   const [messages, setMessages] = useState<UiMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,9 +54,11 @@ export default function AssistantPage() {
   const [submitted, setSubmitted] = useState(false)
   const [supplementingField, setSupplementingField] = useState<string | null>(null)
   const [supplementedAnswers, setSupplementedAnswers] = useState<Record<string, string>>({})
-  // 변화 표시: supplement 성공 직전의 위험도를 기억했다가 "9점 → 7점" 로 보여줌
   const [prevRisk, setPrevRisk] = useState<{ grade: RiskGrade | null; score: number | null } | null>(null)
   const lastUserMessageRef = useRef<string | null>(null)
+  const restoredRef = useRef(false)
+
+  const sessionKey = user ? `ordo.session.${user.userId}` : null
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -50,7 +66,6 @@ export default function AssistantPage() {
       lastUserMessageRef.current = text
 
       const history = messages.map((m) => ({ role: m.role, content: m.content }))
-      // 사용자 턴을 UI 에 즉시 반영
       setMessages((prev) => [...prev, { role: 'user', content: text }])
       setLoading(true)
       setError(null)
@@ -61,13 +76,15 @@ export default function AssistantPage() {
 
         setMessages((prev) => [...prev, { role: 'assistant', content: res.reply }])
 
-        // 마지막 카드를 선택해 요청서 패널에 표시 (한 턴에 여러 개면 가장 최근 결과가 우선)
         const lastCard = res.cards.length > 0 ? res.cards[res.cards.length - 1] : null
         if (lastCard) {
           setCard(lastCard)
           setSubmitted(lastCard.tool === 'create_request'
             ? (lastCard.data as AssistantCardCreate).ticket.status !== 'DRAFT'
             : false)
+          // 새 카드 로드 시 보완 기록·이전 위험도 초기화
+          setSupplementedAnswers({})
+          setPrevRisk(null)
         }
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : '네트워크 오류가 발생했습니다.'
@@ -82,7 +99,6 @@ export default function AssistantPage() {
   const retry = useCallback(() => {
     const text = lastUserMessageRef.current
     if (!text) return
-    // 실패한 턴의 사용자 메시지는 이미 messages 에 들어 있으므로 pop 후 재전송
     setMessages((prev) => {
       if (prev.length > 0 && prev[prev.length - 1].role === 'user') return prev.slice(0, -1)
       return prev
@@ -103,7 +119,6 @@ export default function AssistantPage() {
       if (!token || !card || card.tool !== 'create_request') return
       const createCard = card.data as AssistantCardCreate
 
-      // 변화 표시용: 호출 직전 위험도 스냅샷
       setPrevRisk({
         grade: createCard.triage.riskGrade,
         score: createCard.triage.riskScore,
@@ -115,7 +130,6 @@ export default function AssistantPage() {
           `/api/tickets/${createCard.ticket.id}/supplement`,
           { body: { field, answer }, token },
         )
-        // ticket (TicketDetailResponse) → TicketCreatedResponse 형태로 쪼개서 카드 유지
         setCard({
           tool: 'create_request',
           data: {
@@ -150,7 +164,6 @@ export default function AssistantPage() {
         `/api/tickets/${createCard.ticket.id}/submit`,
         { method: 'POST', token },
       )
-      // 로컬 카드 상태를 접수 후 상태로 갱신 (ticket 만 교체)
       setCard({
         tool: 'create_request',
         data: {
@@ -163,7 +176,6 @@ export default function AssistantPage() {
         },
       })
       setSubmitted(true)
-      // Ordo 응답으로 접수 안내 추가
       setMessages((prev) => [
         ...prev,
         {
@@ -179,34 +191,102 @@ export default function AssistantPage() {
     }
   }, [card, token])
 
-  // dev-only — __seed.html 로 pre-populated 된 상태를 1회 읽어 초기화 (캡처용).
-  // 프로덕션 번들에선 import.meta.env.DEV = false 로 tree-shaken.
+  // --- 세션 저장: 상태 변경 시 sessionStorage 갱신 ----------------------
   useEffect(() => {
-    if (!import.meta.env.DEV) return
-    const raw = sessionStorage.getItem('ordo.initState')
-    if (!raw) return
-    sessionStorage.removeItem('ordo.initState')
+    if (!sessionKey) return
+    const payload = {
+      messages,
+      cardTicketId: cardTicketId(card),
+      supplementedAnswers,
+      prevRisk,
+    }
     try {
-      // atob 은 binary string 반환 — 한글(UTF-8 멀티바이트)를 올바르게 복호화하려면 TextDecoder 로.
-      const bin = atob(raw)
-      const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
-      const json = new TextDecoder('utf-8').decode(bytes)
-      const s = JSON.parse(json) as {
+      sessionStorage.setItem(sessionKey, JSON.stringify(payload))
+    } catch {
+      // quota 초과 등 — 조용히 무시 (세션 복원 못 되는 정도)
+    }
+  }, [sessionKey, messages, card, supplementedAnswers, prevRisk])
+
+  // --- 세션 복원 (사용자별 1회) ------------------------------------------
+  //    저장된 ticketId 는 서버에서 최신 상태로 다시 조회해 카드로 교체.
+  useEffect(() => {
+    if (!token || !sessionKey || restoredRef.current) return
+    restoredRef.current = true
+
+    // 1) dev-only __seed.html 로 주입된 state 가 있으면 그걸 우선 적용.
+    if (import.meta.env.DEV) {
+      const seedRaw = sessionStorage.getItem('ordo.initState')
+      if (seedRaw) {
+        sessionStorage.removeItem('ordo.initState')
+        try {
+          const bin = atob(seedRaw)
+          const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+          const json = new TextDecoder('utf-8').decode(bytes)
+          const s = JSON.parse(json) as {
+            messages?: UiMessage[]
+            card?: AssistantCard
+            prevRisk?: { grade: RiskGrade | null; score: number | null }
+            supplementedAnswers?: Record<string, string>
+          }
+          if (s.messages) setMessages(s.messages)
+          if (s.card) setCard(s.card)
+          if (s.prevRisk) setPrevRisk(s.prevRisk)
+          if (s.supplementedAnswers) setSupplementedAnswers(s.supplementedAnswers)
+          return   // seed 가 있으면 session 복원은 건너뜀
+        } catch {
+          // bad seed → fall through
+        }
+      }
+    }
+
+    // 2) 사용자별 세션 복원
+    const raw = sessionStorage.getItem(sessionKey)
+    if (!raw) return
+    try {
+      const s = JSON.parse(raw) as {
         messages?: UiMessage[]
-        card?: AssistantCard
-        prevRisk?: { grade: RiskGrade | null; score: number | null }
+        cardTicketId?: number
         supplementedAnswers?: Record<string, string>
+        prevRisk?: { grade: RiskGrade | null; score: number | null }
       }
       if (s.messages) setMessages(s.messages)
-      if (s.card) setCard(s.card)
-      if (s.prevRisk) setPrevRisk(s.prevRisk)
       if (s.supplementedAnswers) setSupplementedAnswers(s.supplementedAnswers)
+      if (s.prevRisk) setPrevRisk(s.prevRisk)
+      if (s.cardTicketId) void refetchCard(s.cardTicketId)
     } catch {
-      // ignore bad seed
+      // bad json — 삭제
+      sessionStorage.removeItem(sessionKey)
     }
-  }, [])
 
-  // 다른 카드가 로드되면 submitted 플래그 초기화
+    async function refetchCard(ticketId: number) {
+      try {
+        const [ticket, triage] = await Promise.all([
+          api<TicketDetailResponse>(`/api/tickets/${ticketId}`, { token: token! }),
+          api<TriageResponse>(`/api/tickets/${ticketId}/triage`, { token: token! }),
+        ])
+        setCard({
+          tool: 'create_request',
+          data: {
+            ticket: {
+              id: ticket.id,
+              ticketNo: ticket.ticketNo,
+              status: ticket.status,
+              sla: ticket.sla,
+              triage: null,
+              createdAt: ticket.createdAt,
+            },
+            triage,
+          },
+        })
+      } catch {
+        // 티켓이 삭제됐거나 접근 거부 → 세션 버리고 깨끗이
+        if (sessionKey) sessionStorage.removeItem(sessionKey)
+        setCard(null)
+      }
+    }
+  }, [token, sessionKey])
+
+  // 다른 카드가 로드되면 submitted 플래그 재계산
   useEffect(() => {
     if (card?.tool === 'create_request') {
       const t = (card.data as AssistantCardCreate).ticket
