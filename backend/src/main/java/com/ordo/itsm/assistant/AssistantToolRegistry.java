@@ -62,4 +62,13 @@ public class AssistantToolRegistry {
     public AssistantTool find(String name) {
         return byName.get(name);
     }
+
+    /**
+     * 등록된 모든 도구 이름. 역할과 무관.
+     * ToolCallRecovery.strip 가 "역할 밖 도구" 가 답변 본문에 글자로 남는 걸 지울 때 쓴다.
+     * (실행 권한은 isAllowed 로 별도 체크 — 여기 포함돼도 실행 가능하다는 뜻이 아님.)
+     */
+    public Set<String> allToolNames() {
+        return byName.keySet();
+    }
 }

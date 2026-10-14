@@ -68,6 +68,9 @@ public class AssistantService {
         Set<String> allowedToolNames = tools.stream()
                 .map(AssistantTool::name)
                 .collect(Collectors.toUnmodifiableSet());
+        // strip 용 — 역할 밖 도구 이름이 content 로 노출돼도 지우기 위해 전체 도구 이름 사용.
+        // 실행 권한은 여전히 allowedToolNames (dispatcher) 가 결정.
+        Set<String> allToolNames = registry.allToolNames();
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPromptFor(user.role())));
@@ -113,7 +116,7 @@ public class AssistantService {
                         effectiveCalls.add(new ToolCall(id, r.name(), r.arguments()));
                     }
                     // 복구가 성공했으면 content 에서 호출 문자열은 제거 (남은 자연어만 history 에 남긴다)
-                    String stripped = ToolCallRecovery.strip(reply.content(), allowedToolNames, jsonMapper);
+                    String stripped = ToolCallRecovery.strip(reply.content(), allToolNames, jsonMapper);
                     assistantContent = stripped.isBlank() ? null : stripped;
                     log.info("[Assistant] 텍스트 도구 호출 복구 {}건 (user={})",
                             effectiveCalls.size(), user.userId());
@@ -124,8 +127,10 @@ public class AssistantService {
 
             if (effectiveCalls == null || effectiveCalls.isEmpty()) {
                 // tool 호출 없음 & 복구 없음 → 자연어 답변으로 종료.
-                // content 에 혹시 남은 함수 호출 흔적을 한번 더 strip 해서 화면 보호.
-                String clean = ToolCallRecovery.strip(reply.content(), allowedToolNames, jsonMapper);
+                // 역할 밖 도구 이름이 content 에 글자로 남는 것까지 지운다 (실행과 분리).
+                String rawReply = reply.content();
+                boolean containedRoleOutsideTool = containsRoleOutsideTool(rawReply, allToolNames, allowedToolNames);
+                String clean = ToolCallRecovery.strip(rawReply, allToolNames, jsonMapper);
                 // 함수 호출 문자열을 지운 뒤 생긴 연속 빈 줄은 한 줄 공백으로 축소.
                 clean = clean.replaceAll("\\n{3,}", "\n\n").trim();
                 if (clean.isBlank()) {
@@ -139,9 +144,13 @@ public class AssistantService {
                         continue;
                     }
                     // 재시도도 실패 or 재시도 불가 → cards 기반 템플릿으로 안전 폴백
-                    clean = cards.isEmpty()
-                            ? "요청을 이해하지 못했어요. 조금만 더 설명해 주실래요?"
-                            : fallbackReplyFromCards(cards);
+                    if (containedRoleOutsideTool && cards.isEmpty()) {
+                        clean = "해당 요청은 처리할 수 없습니다. 다른 방법으로 알려 주실래요?";
+                    } else {
+                        clean = cards.isEmpty()
+                                ? "요청을 이해하지 못했어요. 조금만 더 설명해 주실래요?"
+                                : fallbackReplyFromCards(cards);
+                    }
                 }
                 return new ChatResponse(applyKoreanLabels(clean), cards, callLog, false);
             }
@@ -161,6 +170,19 @@ public class AssistantService {
         return new ChatResponse(
                 "요청하신 작업을 처리했어요. 결과는 아래 카드를 확인해 주세요.",
                 cards, callLog, true);
+    }
+
+    /**
+     * reply 원문에 "역할 밖 도구" 이름이 글자로 포함돼 있었는지. (ToolCallRecovery.strip 가 지우기 전 판정.)
+     * strip 결과가 빈 안내 문구로 넘어가는 분기에서 "해당 요청은 처리할 수 없습니다" 로 교체할지 결정.
+     */
+    private static boolean containsRoleOutsideTool(String rawReply, java.util.Set<String> all, java.util.Set<String> allowed) {
+        if (rawReply == null || rawReply.isBlank()) return false;
+        for (String name : all) {
+            if (allowed.contains(name)) continue;
+            if (rawReply.contains(name)) return true;
+        }
+        return false;
     }
 
     /**

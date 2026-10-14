@@ -203,8 +203,17 @@ public class TicketService {
      * 호출자가 정렬을 지정하지 않으면 createdAt DESC 로 fallback — 최신 요청이 페이지 밖으로 밀리는 걸 막는다.
      */
     public PageResponse<TicketSummaryResponse> list(AuthUser user, TicketStatus status, Pageable pageable) {
+        return listWithinScope(user, tenantAccessService.scopeOf(user), status, pageable);
+    }
+
+    /**
+     * list 와 동일하지만 호출자가 TenantScope 를 좁혀 전달할 수 있다.
+     * ListRequestsTool 이 "특정 고객사" 인자를 받으면 그 테넌트만 포함하는 scope 로 호출한다.
+     * 호출자가 지정한 scope 는 사용자 접근 범위를 넘지 않아야 — 그 체크는 호출자(ListRequestsTool) 책임.
+     */
+    public PageResponse<TicketSummaryResponse> listWithinScope(
+            AuthUser user, TenantScope scope, TicketStatus status, Pageable pageable) {
         pageable = withDefaultSort(pageable);
-        TenantScope scope = tenantAccessService.scopeOf(user);
         if (scope.isEmpty()) {
             return PageResponse.empty(pageable);
         }

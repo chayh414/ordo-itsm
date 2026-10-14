@@ -5,11 +5,35 @@
 - 입력 문장은 `docs/test/Ordo_테스트_시나리오.md` 와 100% 동일 (verbatim).
 - 실패 시 코드 수정하지 않음, 기록만.
 
+## 답변 정확도 수정 (10/14) — list 도구 조건 명시
+
+**원인**: AI 가 사용자의 한글 질문 "보완 대기" 를 그대로 `status: "보완 대기"` 로 넘겼는데, 서버 `parseStatus` 가 `TicketStatus.valueOf(...)` 로만 매칭해 enum 밖 값으로 fail → **null → 전체 상태 조회**. 서버 llmText 가 상태를 명시 안 해서 AI 가 사용자 질문 표현을 그대로 답변에 복사 → 혼재 발생.
+
+**수정**:
+- `ListMyRequestsTool.parseStatus` 가 **한글 라벨 역매핑** (TriageLabels 와 매치). "보완 대기" → INFO_REQUIRED 로 수용.
+- 도구 description 에 "사용자가 상태를 말하면 status 인자를 반드시 넣을 것" 추가.
+- `list_requests` 에 **tenant 인자** (이름/코드) 추가. 범위 밖이면 조회 생략 + "담당 고객사가 아닙니다" 안내.
+- 공용 `ListFormat` — 첫 줄에 **"조건: {고객사|전체 고객사} · {상태|전체 상태} · N건"** 명시, 각 항목에 `[번호 · 고객사 · 상태]` 라벨.
+- `ToolCallRecovery.strip` 가 전체 도구 이름 기준으로 역할 밖 글자도 지움. 지운 뒤 비면 "해당 요청은 처리할 수 없습니다" 안내.
+
+**검증 (답변 원문 — 사용자 직접 확인용)**:
+
+| # | 입력 | 도구 호출 args | 서버 조건 라인 | 혼재 |
+|---|---|---|---|---|
+| B1 | A대학교 요청 중에 보완 대기 중인 거 보여줘 | `{"status":"보완 대기","tenant":"A대학교"}` | A대학교에서 보완 대기 중인 요청이 10건 | 없음 ✓ |
+| B2 | B은행 요청 목록 보여줘 | `{"status":"SUBMITTED","tenant":"B은행"}` | B은행 접수된 요청이 없음 (0건) | AI 가 과도 필터(SUBMITTED), 결과 자체는 올바름 |
+| B3 | C쇼핑몰 요청 보여줘 | 도구 호출 없음 | "해당 요청은 처리할 수 없습니다 — 다른 방법으로 알려 주실래요?" | 범위 밖 안내 ✓ |
+| D1 | 보완 대기 중인 요청 전부 보여줘 | `{"status":"보완 대기"}` | 보완 대기 10건, 각 항목 `[번호, 고객사]` 표시 | 없음 ✓ |
+| A14b | 보완 대기 중인 것만 보여줘 | `{"status":"보완 대기"}` | 김요청 보완 대기 10건 | 없음 ✓ |
+
+**스파이크 재측정**: 40/40 PASS · Round-trip PASS · 도구 schema 변경 영향 없음.
+
 ## 최종 (10/14) — 25건 전체
 
 - **PASS 23 / AMBIGUOUS 1 / FAIL 1**
 - **FAIL**: **A2** — 어서션이 `category=FIREWALL` 체크. 실제 결과 `category=NETWORK · score=11 · factors=[night, network, prod, test_missing, rollback_missing] · missing=[testPlan, rollbackPlan]` 로 **점수·요인·IP 재질문 모두 기대값 충족**. 분류명(FIREWALL vs NETWORK) 은 2-1 삭제 결정 (알려진 한계) 때문에 어서션 fail 로 표시만.
 - **AMBIGUOUS**: **A3** — 모델이 `requestType=SERVICE_REQUEST + category=ACCOUNT` 로 분류해 CHANGE 룰이 적용 안 되고 점수 계산도 없음. 분류 재조정은 하지 않기로 결정 (알려진 한계).
+- **알려진 한계**: **A8** — "포털 관리자 계정 비밀번호 초기화 부탁드려요. 지금 비밀번호는 Abcd1234! 입니다." 입력이 어시스턴트에 들어오면 AI 가 **"방법 질문"으로 분류**해 `create_request` 호출 없이 설명만 돌려줌 (즉 요청서 미생성). 비밀번호는 마스킹돼 노출 안 되지만, "서비스 요청/계정" 으로 요청서가 작성되지 않는 것은 결정 트리의 보수적 판정이라 수정 안 함.
 - **Round-trip (대표 시연 흐름)** — 재측정 중 1회 FAIL → 재현 2회 모두 PASS. 일시적 LLM 비결정성, 코드 변경 없음.
 
 전체 25건 중 **실질 통과율 24/25 (A2 알려진 한계 포함)**, 알려진 한계 2개 제외 시 100%.

@@ -172,6 +172,21 @@ class AssistantServiceLoopTest {
     }
 
     @Test
+    void outOfRoleToolTextInReply_isStrippedAndReplacedWithUnavailableMessage() {
+        // REQUESTER 에게 노출되지 않는 list_requests 이름이 글자로 섞여 오면,
+        // strip 가 전체 도구 이름을 기준으로 지우고 안내 메시지로 교체되어야 한다.
+        FakeLlm llm = new FakeLlm();
+        llm.enqueue(new AssistantReply("list_requests({})", List.of(), null));
+        AssistantService svc = build(llm, List.of());
+
+        ChatResponse res = svc.chat(requester, new ChatRequest("전체 요청 보여줘", null));
+
+        assertFalse(res.reply().contains("list_requests"), "도구 이름 글자가 남으면 안 됨");
+        assertTrue(res.reply().contains("처리할 수 없습니다"),
+                "역할 밖 도구가 content 로 왔을 땐 '처리할 수 없습니다' 안내로 교체: " + res.reply());
+    }
+
+    @Test
     void history_includesUserAndAssistant_butDropsToolRole() {
         FakeLlm llm = new FakeLlm();
         llm.enqueue(new AssistantReply("ok", List.of(), null));

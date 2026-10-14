@@ -5,6 +5,7 @@ import com.ordo.itsm.global.security.AuthUser;
 import com.ordo.itsm.ticket.TicketService;
 import com.ordo.itsm.ticket.TicketStatus;
 import com.ordo.itsm.ticket.dto.TicketSummaryResponse;
+import com.ordo.itsm.triage.TriageLabels;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -31,7 +32,9 @@ public class ListMyRequestsTool implements AssistantTool {
 
     @Override
     public String description() {
-        return "내 요청 목록을 최신순 10건 조회한다. status 를 생략하면 전체 상태.";
+        // 사용자가 상태(보완 대기·접수·완료 등)를 말하면 status 인자를 반드시 넣게 유도.
+        return "내 요청 목록을 최신순 10건 조회한다. 사용자가 상태(예: 보완 대기, 접수, 완료)를 말하면"
+                + " status 인자를 반드시 넣을 것 (enum 값으로). 미지정 시 전체 상태.";
     }
 
     @Override
@@ -42,7 +45,7 @@ public class ListMyRequestsTool implements AssistantTool {
                         "status", Map.of(
                                 "type", "string",
                                 "enum", Arrays.stream(TicketStatus.values()).map(Enum::name).toList(),
-                                "description", "티켓 상태 필터 (선택)"
+                                "description", "티켓 상태 필터 (선택). INFO_REQUIRED=보완 대기, SUBMITTED=접수됨 등."
                         )
                 ),
                 "additionalProperties", false
@@ -55,28 +58,24 @@ public class ListMyRequestsTool implements AssistantTool {
         PageResponse<TicketSummaryResponse> page = ticketService.listMine(
                 user, status, PageRequest.of(0, PAGE_SIZE, Sort.by(Sort.Direction.DESC, "createdAt")));
 
-        if (page.content().isEmpty()) {
-            return ToolResult.ok("조건에 해당하는 내 요청이 없습니다.", page);
-        }
-
-        StringBuilder llm = new StringBuilder();
-        llm.append("최신 ").append(page.content().size()).append("건 — ");
-        List<String> items = page.content().stream()
-                .map(t -> "[" + t.ticketNo() + " · "
-                        + com.ordo.itsm.triage.TriageLabels.status(t.status() == null ? null : t.status().name())
-                        + "] " + t.subject())
-                .toList();
-        llm.append(String.join(" / ", items));
-        return ToolResult.ok(llm.toString(), page);
+        return ToolResult.ok(ListFormat.render(page, null, status), page);
     }
 
+    /**
+     * 상태 값 파싱. enum 이름 (INFO_REQUIRED) 과 한글 라벨 ("보완 대기") 둘 다 수용.
+     * AI 가 사용자 질문의 한글 표현을 그대로 넘기는 경우가 많아 역매핑을 추가함.
+     */
     static TicketStatus parseStatus(Map<String, Object> args) {
         Object v = args == null ? null : args.get("status");
         if (v == null) return null;
+        String s = v.toString().trim();
+        if (s.isEmpty()) return null;
         try {
-            return TicketStatus.valueOf(v.toString().trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return null;    // 모델이 enum 밖 값을 주면 필터 미적용 (안전쪽)
+            return TicketStatus.valueOf(s.toUpperCase());
+        } catch (IllegalArgumentException ignored) { /* 한글 라벨 시도 */ }
+        for (TicketStatus st : TicketStatus.values()) {
+            if (TriageLabels.status(st.name()).equals(s)) return st;
         }
+        return null;
     }
 }
