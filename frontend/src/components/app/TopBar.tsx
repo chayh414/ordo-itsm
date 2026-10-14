@@ -16,9 +16,9 @@ interface NavItem {
   providerOnly?: boolean
 }
 
+// 요청자는 어시스턴트의 list_my_requests 도구로 자기 요청을 조회하므로 별도 메뉴를 두지 않는다.
 const NAV: NavItem[] = [
   { to: '/app', label: '어시스턴트' },
-  { to: '/app/my', label: '내 요청' },
   { to: '/app/backoffice', label: '백오피스', providerOnly: true },
 ]
 

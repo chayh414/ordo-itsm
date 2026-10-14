@@ -27,6 +27,8 @@ export interface TicketSummaryResponse {
   ticketNo: string
   tenantName: string
   requesterName: string
+  /** AI 가 뽑은 요약 제목 (20자). 없으면 null — 프론트는 subject 로 fallback. */
+  title: string | null
   subject: string
   requestType: string | null
   status: string

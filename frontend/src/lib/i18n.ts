@@ -160,60 +160,60 @@ function formatCorrectionBody(raw: string): string {
   // 1) requestType 보정
   let m = raw.match(/^\[FIX\]\s*requestType=([A-Z_]+)→([A-Z_]+)/)
   if (m) {
-    return `AI 가 '${label.requestType(m[1])}' 로 봤는데 '${label.requestType(m[2])}' 로 바로잡았어요`
+    return `AI 가 '${label.requestType(m[1])}' 로 봤는데 '${label.requestType(m[2])}' 로 바로잡았습니다.`
   }
 
   // 2) 위험 요인 추가/제거
   m = raw.match(/^\[(FIX|FILL)\]\s*riskFactor\+([a-z_]+)/)
   if (m) {
-    return `AI 가 놓친 '${label.riskFactor(m[2])}' 위험 요인을 규칙으로 추가했어요`
+    return `AI 가 놓친 '${label.riskFactor(m[2])}' 위험 요인을 규칙으로 추가했습니다.`
   }
   m = raw.match(/^\[FIX\]\s*riskFactor-([a-z_]+)/)
   if (m) {
-    return `원문 근거가 확실해서 '${label.riskFactor(m[1])}' 위험 요인을 제거했어요`
+    return `원문 근거가 확실해서 '${label.riskFactor(m[1])}' 위험 요인을 제거했습니다.`
   }
 
   // 3) 누락 필드
   m = raw.match(/^\[(FIX|FILL)\]\s*missingField\+([a-zA-Z]+)/)
   if (m) {
-    return `'${label.field(m[2])}' 가 비어 있어 확인이 필요합니다`
+    return `'${label.field(m[2])}' 가 비어 있어 확인이 필요합니다.`
   }
   m = raw.match(/^\[FIX\]\s*missingField-([a-zA-Z]+)/)
   if (m) {
-    return `원문에 '${label.field(m[1])}' 근거가 있어 보완 요청에서 뺐어요`
+    return `원문에 '${label.field(m[1])}' 근거가 있어 보완 요청에서 뺐습니다.`
   }
 
   // 4) 작업 예정 시각
   m = raw.match(/^\[FIX\]\s*requestedTime=?:?\s*([^→]+)→null/)
   if (m) {
-    return '원문에 작업 시각 근거가 없어 작업 예정 시간을 비웠어요'
+    return '원문에 작업 시각 근거가 없어 작업 예정 시간을 비웠습니다.'
   }
   m = raw.match(/^\[FIX\]\s*requestedTime[:=]\s*(\d{2}:\d{2})→(\d{2}:\d{2})/)
   if (m) {
-    return `작업 예정 시간을 원문 기준으로 ${m[1]} → ${m[2]} 로 바로잡았어요`
+    return `작업 예정 시간을 원문 기준으로 ${m[1]} → ${m[2]} 로 바로잡았습니다.`
   }
 
   // 5) 확신도 하향
   if (/^\[FIX\]\s*confidence/.test(raw)) {
-    return '보정이 있어 담당자가 한 번 더 확인합니다'
+    return '보정이 있어 담당자가 한 번 더 확인합니다.'
   }
 
   // 6) [NORM] factors cleared
   if (/^\[NORM\]\s*riskFactors cleared/.test(raw)) {
-    return '장애·문의 유형이라 변경 전용 위험 요인은 비웠어요'
+    return '장애·문의 유형이라 변경 전용 위험 요인은 비웠습니다.'
   }
 
   // 7) [SUP] 고객 보완
   m = raw.match(/^\[SUP\]\s*([a-zA-Z]+)\s*고객 보완/)
   if (m) {
-    return `'${label.field(m[1])}' 를 고객이 보완했어요`
+    return `'${label.field(m[1])}' 를 고객이 보완했습니다.`
   }
 
   // 8) rollback/test 동기화 — "해소"
   m = raw.match(/^\[(FIX|SUP)\]\s*(rollbackPlan|testPlan)·(rollback_plan_missing|test_plan_missing)\s*해소/)
   if (m) {
     const reason = m[1] === 'SUP' ? '고객 보완으로' : '원문·AI 근거로'
-    return `${reason} '${label.field(m[2])}' 와 '${label.riskFactor(m[3])}' 요인을 해소했어요`
+    return `${reason} '${label.field(m[2])}' 와 '${label.riskFactor(m[3])}' 요인을 해소했습니다.`
   }
 
   // 9) rollback/test 동기화 — "보강"
@@ -222,12 +222,12 @@ function formatCorrectionBody(raw: string): string {
     const reason = m[1] === 'FIX'
             ? 'AI 는 제공됐다고 보고했지만 원문에 부정 표현이 있어'
             : 'CHANGE 요청에 명시가 없어'
-    return `${reason} '${label.field(m[2])}' 확인과 '${label.riskFactor(m[3])}' 요인을 추가했어요`
+    return `${reason} '${label.field(m[2])}' 확인과 '${label.riskFactor(m[3])}' 요인을 추가했습니다.`
   }
 
   // 10) 방화벽·네트워크 IP 2개로 재질문 해소
   if (/^\[FIX\]\s*sourceIp·destinationIp missing 해소/.test(raw)) {
-    return '원문에 IP 가 2개 이상 있어 출발지·목적지 확인은 다시 묻지 않아요'
+    return '원문에 IP 가 2개 이상 있어 출발지·목적지 확인은 다시 묻지 않습니다.'
   }
 
   // 매칭 실패 — 접두사만 떼고 돌려줌

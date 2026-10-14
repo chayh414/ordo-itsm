@@ -61,10 +61,9 @@ function displayTitle(ticket: { subject: string; originalRequest?: string },
 }
 
 function listTitle(t: TicketSummaryResponse): string {
-  // 목록 응답엔 triage.title 이 없어 subject 사용 — subject 는 CreateRequestTool 이
-  // 원문 앞 100자로 설정하므로, 60자로 추가로 자른다.
-  const s = t.subject ?? ''
-  return s.length > 60 ? s.slice(0, 60) + '…' : s
+  // AI 요약 title 우선. 없으면 subject, 그래도 길면 60자로 자른다.
+  const picked = (t.title && t.title.trim()) || t.subject || ''
+  return picked.length > 60 ? picked.slice(0, 60) + '…' : picked
 }
 
 export default function BackofficePage() {

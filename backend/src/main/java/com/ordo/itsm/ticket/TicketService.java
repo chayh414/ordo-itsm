@@ -17,6 +17,9 @@ import com.ordo.itsm.tenant.TenantScope;
 import com.ordo.itsm.ticket.dto.CreateTicketRequest;
 import com.ordo.itsm.ticket.dto.TicketCreatedResponse;
 import com.ordo.itsm.ticket.dto.TicketDetailResponse;
+import com.ordo.itsm.triage.AiTriageRecord;
+import com.ordo.itsm.triage.AiTriageRecordRepository;
+import com.ordo.itsm.triage.TriageResult;
 import com.ordo.itsm.ticket.dto.TicketSummaryResponse;
 import com.ordo.itsm.user.User;
 import com.ordo.itsm.user.UserRepository;
@@ -49,6 +52,7 @@ public class TicketService {
     private final TicketSlaRepository ticketSlaRepository;
     private final AuditLogService auditLogService;
     private final JsonMapper jsonMapper;
+    private final AiTriageRecordRepository aiTriageRecordRepository;
 
     /** 요청 등록: 원문 저장 → 티켓번호 발급 → SLA 시작 → 감사 로그 (직통 접수) */
     @Transactional
@@ -224,7 +228,9 @@ public class TicketService {
                 : ticketSlaRepository.findByTicket_IdIn(ids).stream()
                         .collect(Collectors.toMap(s -> s.getTicket().getId(), Function.identity()));
 
-        return PageResponse.from(page.map(t -> TicketSummaryResponse.from(t, slaByTicketId.get(t.getId()))));
+        Map<Long, String> titleByTicketId = extractTitles(ids);
+        return PageResponse.from(page.map(t -> TicketSummaryResponse.from(
+                t, slaByTicketId.get(t.getId()), titleByTicketId.get(t.getId()))));
     }
 
     /**
@@ -262,7 +268,32 @@ public class TicketService {
                 ? Map.of()
                 : ticketSlaRepository.findByTicket_IdIn(ids).stream()
                         .collect(Collectors.toMap(s -> s.getTicket().getId(), Function.identity()));
-        return PageResponse.from(page.map(t -> TicketSummaryResponse.from(t, slaByTicketId.get(t.getId()))));
+        Map<Long, String> titleByTicketId = extractTitles(ids);
+        return PageResponse.from(page.map(t -> TicketSummaryResponse.from(
+                t, slaByTicketId.get(t.getId()), titleByTicketId.get(t.getId()))));
+    }
+
+    /**
+     * 각 티켓의 가장 최근 SUCCESS AI 분석 결과에서 title 을 뽑는다.
+     * AI 분석이 없거나 실패했으면 Map 에 없음 → 프론트가 subject 로 fallback.
+     */
+    private Map<Long, String> extractTitles(List<Long> ticketIds) {
+        if (ticketIds.isEmpty()) return Map.of();
+        List<AiTriageRecord> records = aiTriageRecordRepository.findSuccessByTicketIds(ticketIds);
+        Map<Long, String> out = new LinkedHashMap<>();
+        for (AiTriageRecord r : records) {
+            Long tid = r.getTicket().getId();
+            if (out.containsKey(tid)) continue;    // 쿼리가 attemptNo DESC → 첫 번째가 최신
+            String json = r.getResultJson();
+            if (json == null || json.isBlank()) continue;
+            try {
+                TriageResult result = jsonMapper.readValue(json, TriageResult.class);
+                if (result.title() != null && !result.title().isBlank()) {
+                    out.put(tid, result.title());
+                }
+            } catch (RuntimeException ignored) { /* 깨진 레코드 — subject 로 fallback */ }
+        }
+        return out;
     }
 
     /** 티켓번호로 상세 조회 — 어시스턴트의 get_request 도구에서 사용. */

@@ -1,5 +1,7 @@
 # Ordo API 명세 v1
 
+> 9월 설계 단계 문서. 실제 구현과 다를 수 있습니다 (현재 코드가 우선).
+
 ## 0. 공통 규칙
 
 | 항목 | 규칙 |
@@ -43,7 +45,7 @@
 
 ```json
 // Request
-{ "email": "requester@a-univ.ac.kr", "password": "Password123!" }
+{ "email": "requester@a-univ.ac.kr", "password": "********" }
 
 // Response 200
 {

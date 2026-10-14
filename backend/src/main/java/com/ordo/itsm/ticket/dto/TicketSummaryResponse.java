@@ -11,6 +11,8 @@ public record TicketSummaryResponse(
         String ticketNo,
         String tenantName,
         String requesterName,
+        /** AI 가 요약한 "무엇을 하는지" 20자. 없으면 null (프론트가 subject fallback). */
+        String title,
         String subject,
         RequestType requestType,
         TicketStatus status,
@@ -19,12 +21,13 @@ public record TicketSummaryResponse(
         SlaResponse sla,
         OffsetDateTime createdAt
 ) {
-    public static TicketSummaryResponse from(Ticket t, TicketSla sla) {
+    public static TicketSummaryResponse from(Ticket t, TicketSla sla, String title) {
         return new TicketSummaryResponse(
                 t.getId(),
                 t.getTicketNo(),
                 t.getTenant().getName(),
                 t.getRequester().getName(),
+                title,
                 t.getSubject(),
                 t.getRequestType(),
                 t.getStatus(),
@@ -33,5 +36,10 @@ public record TicketSummaryResponse(
                 SlaResponse.from(sla),
                 t.getCreatedAt()
         );
+    }
+
+    /** title 모르면 null 로 (기존 호출부 호환용). */
+    public static TicketSummaryResponse from(Ticket t, TicketSla sla) {
+        return from(t, sla, null);
     }
 }
