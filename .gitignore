@@ -24,6 +24,12 @@ node_modules/
 dist/
 .vite/
 
+# Video production — scripts/HTML/NOTES만 커밋, 음성/녹화/출력물/음악은 제외
+docs/video/assets/voice/
+docs/video/assets/recordings/
+docs/video/assets/music/*.mp3
+docs/video/output/
+
 # OS
 .DS_Store
 Thumbs.db

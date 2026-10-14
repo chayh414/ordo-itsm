@@ -1,0 +1,41 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
+
+:root {
+  --ink: #111111;
+  --body: #2B2B2B;
+  --mute: #6F6F6F;
+  --faint: #A6A6A6;
+  --line: #E3E3E3;
+  --bg: #FFFFFF;
+  --soft: #F6F6F4;
+  --risk: #C8341F;
+  --accent: #0164B2;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 1920px;
+  height: 1080px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Pretendard Variable', Pretendard, sans-serif;
+  font-feature-settings: 'tnum';
+  overflow: hidden;
+}
+
+body.transparent {
+  background: transparent;
+}
+
+.stage {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+}
+
+/* reduced motion은 영상 제작 환경에서는 끄지 않음 (명시적 애니메이션 유지) */

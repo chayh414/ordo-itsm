@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>SCENE 03 — Ordo 등장</title>
+<meta name="scene-duration" content="20" />
+<link rel="stylesheet" href="common.css" />
+<style>
+  .stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  .logo-wrap {
+    position: relative;
+    width: 820px;
+    height: 580px;
+  }
+
+  svg.logo {
+    width: 820px;
+    height: 580px;
+    display: block;
+  }
+
+  /* 계단선 (명세 2장: 중심선 path, stroke 32) */
+  .step {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 32;
+    stroke-linecap: butt;
+    stroke-linejoin: miter;
+    stroke-dasharray: 2400;
+    stroke-dashoffset: 2400;
+    animation: drawStep 2.5s ease-out 0.4s forwards;
+  }
+  @keyframes drawStep {
+    to { stroke-dashoffset: 0; }
+  }
+
+  /* O·R·D·O 글자 — 계단 위에 한 칸씩 올라옴 */
+  .letter {
+    fill: var(--ink);
+    opacity: 0;
+    transform: translateY(14px);
+    transform-origin: center;
+    transform-box: fill-box;
+    animation: letterIn 0.7s ease-out forwards;
+  }
+  .letter.O1 { animation-delay: 3.1s; }
+  .letter.R  { animation-delay: 3.7s; }
+  .letter.D  { animation-delay: 4.3s; }
+  .letter.O2 { animation-delay: 4.9s; }
+
+  @keyframes letterIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 자막 1: 로고 아래 */
+  .tag {
+    margin-top: 32px;
+    font-size: 24px;
+    color: var(--mute);
+    letter-spacing: -0.01em;
+    opacity: 0;
+    animation: fadeUp 0.9s ease-out 6.0s forwards;
+  }
+
+  /* 원칙 3단 — 계단 리듬에 맞춰 하나씩 */
+  .principles {
+    margin-top: 48px;
+    display: flex;
+    gap: 56px;
+    align-items: baseline;
+  }
+  .p {
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: fadeUp 0.8s ease-out forwards;
+  }
+  .p .accent { color: var(--accent); }
+  .p:nth-child(1) { animation-delay: 7.6s; }
+  .p:nth-child(2) { animation-delay: 8.4s; }
+  .p:nth-child(3) { animation-delay: 9.2s; }
+  .dot {
+    color: var(--faint);
+    font-size: 22px;
+    opacity: 0;
+    animation: fadeUp 0.8s ease-out forwards;
+  }
+  .dot:nth-of-type(1) { animation-delay: 8.1s; }
+  .dot:nth-of-type(2) { animation-delay: 8.9s; }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 마지막 2초 전체 어두워지는 대신 흰 매스크로 다음 장면 유도 */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    opacity: 0;
+    pointer-events: none;
+    animation: outMask 1.5s ease-in 18.3s forwards;
+  }
+  @keyframes outMask { to { opacity: 1; } }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="logo-wrap">
+      <svg class="logo" viewBox="0 0 910 696" xmlns="http://www.w3.org/2000/svg">
+        <!-- 계단 중심선 (명세 2장 좌표). 왼쪽→오른쪽으로 그려짐 -->
+        <path class="step"
+              d="M0 680.18 H235.72 V500.91 H455 V321.64 H674.28 V142.36 H910" />
+
+        <!-- O·R·D·O (실제 logo.svg 디테일 유지) -->
+        <g class="letter O1">
+          <path d="M154.053 599.732C154.053 628.982 136.303 646.232 112.553 646.232C88.8027 646.232 71.0527 628.857 71.0527 599.732C71.0527 570.482 88.8027 553.232 112.553 553.232C136.303 553.232 154.053 570.482 154.053 599.732ZM137.678 599.732C137.678 579.107 127.303 567.857 112.553 567.857C97.8027 567.857 87.4277 579.107 87.4277 599.732C87.4277 620.357 97.8027 631.607 112.553 631.607C127.303 631.607 137.678 620.357 137.678 599.732Z" />
+        </g>
+        <g class="letter R">
+          <path d="M304.965 465.709V375.209H338.965C359.715 375.209 370.84 386.834 370.84 404.084C370.84 416.396 365.215 425.521 354.59 429.834L374.09 465.709H355.965L338.215 432.584H321.215V465.709H304.965ZM321.215 418.959H336.465C348.715 418.959 354.215 413.709 354.215 404.084C354.215 394.459 348.715 388.834 336.465 388.834H321.215V418.959Z" />
+        </g>
+        <g class="letter D">
+          <path d="M557.071 287.491H526.321V196.991H557.571C584.571 196.991 600.946 213.991 600.946 242.116C600.946 270.366 584.571 287.491 557.071 287.491ZM542.571 273.366H556.196C575.071 273.366 584.696 262.991 584.696 242.116C584.696 221.366 575.071 211.116 556.696 211.116H542.571V273.366Z" />
+        </g>
+        <g class="letter O2">
+          <path d="M831.619 64.0227C831.619 93.2727 813.869 110.523 790.119 110.523C766.369 110.523 748.619 93.1477 748.619 64.0227C748.619 34.7727 766.369 17.5227 790.119 17.5227C813.869 17.5227 831.619 34.7727 831.619 64.0227ZM815.244 64.0227C815.244 43.3977 804.869 32.1477 790.119 32.1477C775.369 32.1477 764.994 43.3977 764.994 64.0227C764.994 84.6477 775.369 95.8977 790.119 95.8977C804.869 95.8977 815.244 84.6477 815.244 64.0227Z" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="tag">운영 요청 앞단의 사내 AI 어시스턴트</div>
+
+    <div class="principles">
+      <div class="p"><span>AI는 </span><span class="accent">추출</span></div>
+      <span class="dot">·</span>
+      <div class="p"><span>규칙은 </span><span class="accent">판정</span></div>
+      <span class="dot">·</span>
+      <div class="p"><span>사람은 </span><span class="accent">결정</span></div>
+    </div>
+  </div>
+</body>
+</html>

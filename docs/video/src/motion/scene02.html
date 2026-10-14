@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>SCENE 02 — 문제 정의</title>
+<meta name="scene-duration" content="20" />
+<link rel="stylesheet" href="common.css" />
+<style>
+  .stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .wrap {
+    width: 1120px;
+  }
+
+  .label {
+    font-size: 18px;
+    color: var(--mute);
+    letter-spacing: 0.02em;
+    margin-bottom: 36px;
+    opacity: 0;
+    animation: fadeUp 0.9s ease-out 0.3s forwards;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    align-items: baseline;
+    padding: 32px 0;
+    border-top: 1px solid var(--line);
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeUp 0.9s ease-out forwards;
+  }
+  .row:last-child { border-bottom: 1px solid var(--line); }
+
+  .row:nth-of-type(1) { animation-delay: 1.2s; }
+  .row:nth-of-type(2) { animation-delay: 2.4s; }
+  .row:nth-of-type(3) { animation-delay: 3.6s; }
+  .row:nth-of-type(4) { animation-delay: 4.8s; }
+
+  .num {
+    font-size: 20px;
+    color: var(--faint);
+    font-feature-settings: 'tnum';
+  }
+
+  .text {
+    font-size: 48px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1.15;
+  }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* 끝 2초 전체 페이드아웃 */
+  body { animation: fadeOutAll 2s ease-in 18s forwards; }
+  @keyframes fadeOutAll { to { opacity: 0; } }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="wrap">
+      <div class="label">운영 요청의 네 가지 문제</div>
+      <div class="row"><div class="num">1</div><div class="text">흩어진 채널</div></div>
+      <div class="row"><div class="num">2</div><div class="text">빠진 정보</div></div>
+      <div class="row"><div class="num">3</div><div class="text">위험한 변경</div></div>
+      <div class="row"><div class="num">4</div><div class="text">보이지 않는 현황</div></div>
+    </div>
+  </div>
+</body>
+</html>
