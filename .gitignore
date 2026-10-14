@@ -1,6 +1,9 @@
 # Env
 .env
 
+# Local DB dumps — 해시된 비밀번호·JWT secret·시연 데이터 포함, git 추적 금지
+backup/
+
 # Spike raw logs (keep spike-tools.ps1 and the result md, exclude raw per-attempt log)
 docs/scripts/spike-tools.log.jsonl
 

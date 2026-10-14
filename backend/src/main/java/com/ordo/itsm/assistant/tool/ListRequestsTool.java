@@ -58,7 +58,7 @@ public class ListRequestsTool implements AssistantTool {
         ));
         properties.put("tenant", Map.of(
                 "type", "string",
-                "description", "고객사 이름 또는 코드 (선택). 예: 'A대학교' 혹은 'A-UNIV'."
+                "description", "고객사 이름 또는 코드 (선택). 예: 'A제조' 혹은 'A-UNIV'."
         ));
         return Map.of(
                 "type", "object",

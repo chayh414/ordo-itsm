@@ -57,7 +57,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         userRepository.save(User.create(bBank, "requester@b-bank.demo", hash, "한은행", UserRole.REQUESTER));
         userRepository.flush();
 
-        // 운영 담당자·승인자는 A대학교, B은행만 담당 (C쇼핑몰은 접근 불가 → 권한 시연용)
+        // 운영 담당자·승인자는 A제조, B은행만 담당 (C쇼핑몰은 접근 불가 → 권한 시연용)
         for (Tenant customer : new Tenant[]{aUniv, bBank}) {
             grantAccess(operator, customer, "OPERATOR");
             grantAccess(approver, customer, "APPROVER");

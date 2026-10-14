@@ -13,7 +13,7 @@ import { usePageTitle } from '../lib/usePageTitle'
  */
 
 const DEMO_ACCOUNTS = [
-  { label: '김요청 · A대학교 정보화팀 (요청자)', email: 'requester@a-univ.demo' },
+  { label: '김요청 · A제조 정보시스템팀 (요청자)', email: 'requester@a-univ.demo' },
   { label: '이운영 · 시스원 (운영 담당자)', email: 'operator@sysone.demo' },
   { label: '박관리 · 시스원 (운영 관리자)', email: 'admin@sysone.demo' },
 ]
