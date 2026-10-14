@@ -24,13 +24,17 @@ final class ListFormat {
         String statusPart = statusFilter == null ? "전체 상태" : TriageLabels.status(statusFilter.name());
         int count = page.content().size();
 
+        long total = page.totalElements();
         StringBuilder sb = new StringBuilder();
-        sb.append("조건: ").append(tenantPart).append(" · ").append(statusPart)
-                .append(" · ").append(count).append("건");
-
-        if (count == 0) {
-            sb.append("\n조건에 해당하는 요청이 없습니다.");
+        sb.append("조건: ").append(tenantPart).append(" · ").append(statusPart).append(" · ");
+        if (total == 0) {
+            sb.append("0건\n조건에 해당하는 요청이 없습니다.");
             return sb.toString();
+        }
+        if (total == count) {
+            sb.append("전체 ").append(total).append("건");
+        } else {
+            sb.append("전체 ").append(total).append("건 중 최근 ").append(count).append("건");
         }
 
         List<String> items = page.content().stream()

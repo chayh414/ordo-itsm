@@ -55,6 +55,28 @@ class ListRequestsToolTest {
     }
 
     @Test
+    @DisplayName("조건 줄: 전체 23건·표시 10건이면 '전체 23건 중 최근 10건' 으로 표기")
+    void condition_showsTotalAndSliceSeparately() {
+        // 전체 23건, content 10건
+        List<TicketSummaryResponse> items = java.util.stream.IntStream.rangeClosed(1, 10)
+                .mapToObj(i -> new TicketSummaryResponse(
+                        (long) i, "ORD-x-" + i, "A대학교", "김요청",
+                        null, "제목", null, TicketStatus.INFO_REQUIRED,
+                        null, null, null,
+                        java.time.OffsetDateTime.now()))
+                .toList();
+        PageResponse<TicketSummaryResponse> page = new PageResponse<>(items, 0, 10, 23, 3);
+        doReturn(page).when(ticketService).listWithinScope(any(), any(TenantScope.class),
+                eq(TicketStatus.INFO_REQUIRED), any());
+
+        ToolResult result = tool.execute(operator, Map.of("status", "INFO_REQUIRED"));
+
+        String llm = result.llmText();
+        assertTrue(llm.contains("전체 23건 중 최근 10건"),
+                "조건 줄에 전체/표시 구분이 들어가야 함: " + llm);
+    }
+
+    @Test
     @DisplayName("범위 안 고객사 지정 — 그 테넌트로 좁혀 조회")
     void withinScope_narrowsToTenant() {
         Tenant aUniv = mock(Tenant.class);

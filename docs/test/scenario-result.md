@@ -33,6 +33,7 @@
 - **PASS 23 / AMBIGUOUS 1 / FAIL 1**
 - **FAIL**: **A2** — 어서션이 `category=FIREWALL` 체크. 실제 결과 `category=NETWORK · score=11 · factors=[night, network, prod, test_missing, rollback_missing] · missing=[testPlan, rollbackPlan]` 로 **점수·요인·IP 재질문 모두 기대값 충족**. 분류명(FIREWALL vs NETWORK) 은 2-1 삭제 결정 (알려진 한계) 때문에 어서션 fail 로 표시만.
 - **AMBIGUOUS**: **A3** — 모델이 `requestType=SERVICE_REQUEST + category=ACCOUNT` 로 분류해 CHANGE 룰이 적용 안 되고 점수 계산도 없음. 분류 재조정은 하지 않기로 결정 (알려진 한계).
+- **알려진 한계**: **B2** — "B은행 요청 목록 보여줘" 에 상태를 말하지 않았지만 AI 가 자율로 `status: SUBMITTED` 를 넘기는 경우가 있음 (보수적 과도 필터). 결과는 올바른 "0건" 안내이고 서버 조건 라인이 명시해 사용자가 즉시 알 수 있으나, 전체 상태 조회가 기대라면 사용자가 "전체" 를 명시해야 함.
 - **알려진 한계**: **A8** — "포털 관리자 계정 비밀번호 초기화 부탁드려요. 지금 비밀번호는 Abcd1234! 입니다." 입력이 어시스턴트에 들어오면 AI 가 **"방법 질문"으로 분류**해 `create_request` 호출 없이 설명만 돌려줌 (즉 요청서 미생성). 비밀번호는 마스킹돼 노출 안 되지만, "서비스 요청/계정" 으로 요청서가 작성되지 않는 것은 결정 트리의 보수적 판정이라 수정 안 함.
 - **Round-trip (대표 시연 흐름)** — 재측정 중 1회 FAIL → 재현 2회 모두 PASS. 일시적 LLM 비결정성, 코드 변경 없음.
 
