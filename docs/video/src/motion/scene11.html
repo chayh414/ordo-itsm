@@ -8,52 +8,38 @@
 <style>
   body {
     background: var(--bg);
-    animation: bgToBlue 1.0s ease-in-out 0.3s forwards;
+    animation: bgToBlue 1.4s ease-in-out 0.3s forwards;
   }
   @keyframes bgToBlue {
     to { background: var(--accent); }
   }
-
   .stage {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 56px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 56px;
+    animation: endRise 15s linear forwards;
   }
-
+  @keyframes endRise {
+    0%   { transform: translateY(10px) scale(1.00); }
+    100% { transform: translateY(-10px) scale(1.03); }
+  }
   svg.logo {
-    width: 440px;
-    height: 336px;
-    opacity: 0;
-    transform: translateY(16px);
-    animation: logoIn 1.0s ease-out 1.4s forwards;
+    width: 440px; height: 336px;
+    opacity: 0; transform: translateY(16px);
+    animation: logoIn 1.4s ease-out 1.8s forwards, logoBreath 5s ease-in-out 3.5s infinite;
   }
-  @keyframes logoIn {
-    to { opacity: 1; transform: translateY(0); }
+  @keyframes logoIn { to { opacity: 1; transform: translateY(0); } }
+  @keyframes logoBreath {
+    0%, 100% { transform: translateY(0) scale(1.000); }
+    50%      { transform: translateY(-2px) scale(1.014); }
   }
   svg.logo path { fill: #FFFFFF; }
-
   .line {
-    font-size: 32px;
-    letter-spacing: -0.015em;
+    font-size: 32px; letter-spacing: -0.015em;
     color: rgba(255, 255, 255, 0.92);
     opacity: 0;
-    animation: lineIn 1.0s ease-out 2.4s forwards;
+    animation: lineIn 1.4s ease-out 3.0s forwards;
   }
   @keyframes lineIn { to { opacity: 1; } }
-
-  /* 마지막 1.5s 페이드아웃 */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: #000;
-    opacity: 0;
-    pointer-events: none;
-    animation: finalFade 1.5s ease-in 13.5s forwards;
-  }
-  @keyframes finalFade { to { opacity: 1; } }
 </style>
 </head>
 <body>

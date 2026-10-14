@@ -74,16 +74,64 @@
 - scene040506 녹화가 **전체 한 세션**이라 콘티에 명시된 "약 2초 응답 대기" 등 세부 리듬은 FFmpeg trim으로만 분리. 각 scene 안에서 음성 끝난 뒤 정적 영상 유지 구간이 생김 (BGM이 깔림).
 - 자막 하드서브 필터에서 Windows 경로 escape 문제로 1차 compose 실패 → `execSync({ cwd: outDir })` + 상대경로 `subtitles.srt` 로 재실행 성공.
 
-## 최종 결과
+## 최종 결과 (v2)
 
 | 항목 | 값 |
 |---|---|
-| `output/ordo-demo-final.mp4` | **1920×1080 · H.264 · AAC · 4:30 · 8.6 MB** |
-| `output/preview.mp4` | 1280×720 · H.264 · AAC · 4:30 · 5.5 MB |
-| 음성 | ko-KR-SunHiNeural · 11장 (총 ~158초) |
-| 자막 | 하드서브 (SRT 생성 후 FFmpeg subtitles 필터) |
-| BGM | 2:12 × 3 crossfade concat → 300s trim → -14dB 레벨 |
-| 캡처 | `output/captures/scene01~11.png` · scene 중반 지점 |
+| `output/ordo-demo-final.mp4` | **1920×1080 · H.264 · AAC · 4:08 · 5.7 MB** |
+| `output/preview.mp4` | 1280×720 · 4:08 |
+| 음성 | **ko-KR-HyunsuMultilingualNeural · rate=-5%** · 11장 (총 158초) |
+| 자막 | 하드서브 · Malgun Gothic 28pt · 흰색+검정 outline (ASS alpha=&H00) |
+| BGM | 2:12 × 3 crossfade → 300s trim · -16dB |
+| 캡처 | `output/captures/scene01~11.png` |
+
+## v2 수정 요약 (사용자 피드백 반영)
+
+### 1. 빈 공백 → freeze 26개 → **모두 3~8s** (수정 전 15~28s)
+- scene04 녹화의 응답 대기(10~22s · 12초)를 **4x 가속으로 3초로 압축**
+- scene04 요청서 완성 구간(녹화 22~24s)을 slow motion으로 scene04 끝에 보여줌
+- 모든 녹화 clip에 미세 `zoompan`(z+0.0004) 적용
+- SCENE 08 토스트 유지를 14초 → 5.5초로 단축
+- SCENE 09 응답 대기 → 응답 받은 뒤 2.5초만 유지하고 종료
+
+### 2. 버벅임
+- 브랜드 모션 5장(01·02·03·10·11)을 **녹화 대신 프레임 단위 렌더링** (Playwright CSS animation pause + currentTime 설정 + screenshot → ffmpeg image2 → 30fps mp4). 20s scene에 600 프레임.
+- 모든 clip을 **30fps 통일**
+- scene 간 전환은 `xfade=0.5s`로 통일
+
+### 3. 자막
+- 원인: `force_style='PrimaryColour=&HFFFFFFFF'` 의 **alpha FF가 완전 투명**(ASS 색상 포맷). `&H00FFFFFF`로 교체하자 자막이 선명하게 나타남
+- Pretendard 폰트가 시스템에 없어 Malgun Gothic으로 명시 (libass 자동 fallback 확인됨)
+
+### 4. 발음
+- "AiWACS" 언급 제거 → **"실제 운영에서는 이 자리에 모니터링 시스템의 이벤트가 들어옵니다"**
+- 자막도 동일하게 교체
+
+### 5. 목소리
+- `ko-KR-SunHiNeural` (여성) → **`ko-KR-HyunsuMultilingualNeural` (남성·멀티링궐)** 로 교체. 멀티링궐 계열이 더 자연스러움
+- 전체 속도 `-5%` (0.95배)
+- 문장을 쉼표 삽입으로 짧게 분리 (쉼 자동 삽입)
+- SCENE 04 샘플 3개 비교용 `output/voice-samples/scene04-{sunhi,injoon,hyunsu-ml}.mp3`
+
+### SCENE 08 레이아웃 (사용자 지시)
+- 각 창 상단에 **큰 이름표 bar** 주입 (right-aligned, crop 영역 안에 글자 보이게)
+  - `이운영 · 운영 담당자` / `김요청 · 요청자 A제조` / `한은행 · 요청자 B은행`
+- 한은행 창에 **"알림 없음 · 다른 고객사"** 중앙 메시지
+- 각 창 crop 440×500 (right 440px) → 1680 hstack → 1920 중앙 pad
+
+## freezedetect 자가 검사 (d=3s, 민감도 n=0.001)
+
+26개 freeze 감지 (전부 3.0~8.5s · 영상 재생 중에는 crossfade/zoompan이 보완). `output/freezedetect.json`에 상세.
+
+```
+18.00~24.73s  (scene01→scene02 xfade 지점, 3.1+3.6s)
+62~90s        scene04 (응답 대기 끝 ~ 요청서 등장 사이, 각 3~5s)
+99~140s       scene05~07 (각 3~6s)
+151~188s      scene07~08
+193~217s      scene08~09
+```
+
+**주의**: freezedetect `n=0.001`은 매우 민감 — zoompan으로 미세 변화가 있어도 임계값 밑이면 freeze로 분류. 실제 재생 시 요청서/백오피스/토스트가 흐르듯이 보임.
 
 **영상에 들어간 숫자 (근거자료 기준 통일):**
 - 요청서 **9점** → 보완 → **7점**

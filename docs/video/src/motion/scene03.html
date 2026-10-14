@@ -6,122 +6,84 @@
 <meta name="scene-duration" content="20" />
 <link rel="stylesheet" href="common.css" />
 <style>
+  html, body { background: var(--bg); }
   .stage {
     display: flex;
     align-items: center;
     justify-content: center;
     flex-direction: column;
+    animation: slowUp 20s linear forwards;
   }
-
+  @keyframes slowUp {
+    0%   { transform: translateY(14px) scale(1.00); }
+    100% { transform: translateY(-18px) scale(1.03); }
+  }
   .logo-wrap {
     position: relative;
     width: 820px;
     height: 580px;
-  }
-
-  svg.logo {
-    width: 820px;
-    height: 580px;
-    display: block;
-  }
-
-  /* 계단선 (명세 2장: 중심선 path, stroke 32) */
-  .step {
-    fill: none;
-    stroke: var(--ink);
-    stroke-width: 32;
-    stroke-linecap: butt;
-    stroke-linejoin: miter;
-    stroke-dasharray: 2400;
-    stroke-dashoffset: 2400;
-    animation: drawStep 2.5s ease-out 0.4s forwards;
-  }
-  @keyframes drawStep {
-    to { stroke-dashoffset: 0; }
-  }
-
-  /* O·R·D·O 글자 — 계단 위에 한 칸씩 올라옴 */
-  .letter {
-    fill: var(--ink);
-    opacity: 0;
-    transform: translateY(14px);
+    animation: breath 6s ease-in-out 7s infinite;
     transform-origin: center;
-    transform-box: fill-box;
-    animation: letterIn 0.7s ease-out forwards;
   }
-  .letter.O1 { animation-delay: 3.1s; }
-  .letter.R  { animation-delay: 3.7s; }
-  .letter.D  { animation-delay: 4.3s; }
-  .letter.O2 { animation-delay: 4.9s; }
-
+  @keyframes breath {
+    0%, 100% { transform: scale(1.000); }
+    50%      { transform: scale(1.012); }
+  }
+  svg.logo { width: 820px; height: 580px; display: block; }
+  .step {
+    fill: none; stroke: var(--ink); stroke-width: 32;
+    stroke-linecap: butt; stroke-linejoin: miter;
+    stroke-dasharray: 2400; stroke-dashoffset: 2400;
+    animation: drawStep 3.0s ease-out 0.6s forwards;
+  }
+  @keyframes drawStep { to { stroke-dashoffset: 0; } }
+  .letter {
+    fill: var(--ink); opacity: 0;
+    transform: translateY(14px);
+    transform-origin: center; transform-box: fill-box;
+    animation: letterIn 0.9s ease-out forwards;
+  }
+  .letter.O1 { animation-delay: 3.8s; }
+  .letter.R  { animation-delay: 4.6s; }
+  .letter.D  { animation-delay: 5.4s; }
+  .letter.O2 { animation-delay: 6.2s; }
   @keyframes letterIn {
     to { opacity: 1; transform: translateY(0); }
   }
-
-  /* 자막 1: 로고 아래 */
   .tag {
-    margin-top: 32px;
-    font-size: 24px;
-    color: var(--mute);
-    letter-spacing: -0.01em;
+    margin-top: 32px; font-size: 24px;
+    color: var(--mute); letter-spacing: -0.01em;
     opacity: 0;
-    animation: fadeUp 0.9s ease-out 6.0s forwards;
+    animation: fadeUp 1.2s ease-out 8.0s forwards;
   }
-
-  /* 원칙 3단 — 계단 리듬에 맞춰 하나씩 */
   .principles {
-    margin-top: 48px;
-    display: flex;
-    gap: 56px;
-    align-items: baseline;
+    margin-top: 48px; display: flex; gap: 56px; align-items: baseline;
   }
   .p {
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    opacity: 0;
-    transform: translateY(14px);
-    animation: fadeUp 0.8s ease-out forwards;
+    font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
+    opacity: 0; transform: translateY(14px);
+    animation: fadeUp 1.0s ease-out forwards;
   }
   .p .accent { color: var(--accent); }
-  .p:nth-child(1) { animation-delay: 7.6s; }
-  .p:nth-child(2) { animation-delay: 8.4s; }
-  .p:nth-child(3) { animation-delay: 9.2s; }
+  .p:nth-child(1) { animation-delay: 10.0s; }
+  .p:nth-child(2) { animation-delay: 12.2s; }
+  .p:nth-child(3) { animation-delay: 14.4s; }
   .dot {
-    color: var(--faint);
-    font-size: 22px;
-    opacity: 0;
-    animation: fadeUp 0.8s ease-out forwards;
+    color: var(--faint); font-size: 22px; opacity: 0;
+    animation: fadeUp 1.0s ease-out forwards;
   }
-  .dot:nth-of-type(1) { animation-delay: 8.1s; }
-  .dot:nth-of-type(2) { animation-delay: 8.9s; }
-
+  .dot:nth-of-type(1) { animation-delay: 11.4s; }
+  .dot:nth-of-type(2) { animation-delay: 13.6s; }
   @keyframes fadeUp {
     to { opacity: 1; transform: translateY(0); }
   }
-
-  /* 마지막 2초 전체 어두워지는 대신 흰 매스크로 다음 장면 유도 */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    opacity: 0;
-    pointer-events: none;
-    animation: outMask 1.5s ease-in 18.3s forwards;
-  }
-  @keyframes outMask { to { opacity: 1; } }
 </style>
 </head>
 <body>
   <div class="stage">
     <div class="logo-wrap">
       <svg class="logo" viewBox="0 0 910 696" xmlns="http://www.w3.org/2000/svg">
-        <!-- 계단 중심선 (명세 2장 좌표). 왼쪽→오른쪽으로 그려짐 -->
-        <path class="step"
-              d="M0 680.18 H235.72 V500.91 H455 V321.64 H674.28 V142.36 H910" />
-
-        <!-- O·R·D·O (실제 logo.svg 디테일 유지) -->
+        <path class="step" d="M0 680.18 H235.72 V500.91 H455 V321.64 H674.28 V142.36 H910" />
         <g class="letter O1">
           <path d="M154.053 599.732C154.053 628.982 136.303 646.232 112.553 646.232C88.8027 646.232 71.0527 628.857 71.0527 599.732C71.0527 570.482 88.8027 553.232 112.553 553.232C136.303 553.232 154.053 570.482 154.053 599.732ZM137.678 599.732C137.678 579.107 127.303 567.857 112.553 567.857C97.8027 567.857 87.4277 579.107 87.4277 599.732C87.4277 620.357 97.8027 631.607 112.553 631.607C127.303 631.607 137.678 620.357 137.678 599.732Z" />
         </g>
@@ -136,9 +98,7 @@
         </g>
       </svg>
     </div>
-
     <div class="tag">운영 요청 앞단의 사내 AI 어시스턴트</div>
-
     <div class="principles">
       <div class="p"><span>AI는 </span><span class="accent">추출</span></div>
       <span class="dot">·</span>

@@ -1,15 +1,4 @@
-// 전체 합성 — scene 11개를 1080p / 720p 두 벌로 생성
-// 각 scene별:
-//   • 모션(5개): webm 통째 사용
-//   • 녹화 clip 통합 scene040506 → 04/05/06 세 clip으로 trim
-//   • scene07·08·09는 각각 독립 녹화
-// scene별 흐름:
-//   영상 → 1920×1080 흰 캔버스 중앙 pad → 해당 scene 음성과 mux → scene_NN.mp4
-// 전체:
-//   mp4 concat → BGM 믹싱 (sidechaincompress로 음성 구간 자동 감쇠) → 자막 하드서브
-//   final 1080p + preview 720p
-//
-// 사용: node src/compose/compose.mjs
+// compose v2 — 30fps 통일 · 각 scene clip 길이 = 음성 길이 + 0.8s · freeze 금지 · xfade 전환 · 자막 수정
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -24,23 +13,24 @@ const clipDir = resolve(outDir, 'clips');
 mkdirSync(clipDir, { recursive: true });
 
 const timing = JSON.parse(readFileSync(resolve(videoRoot, 'src', 'narration', 'timing.json'), 'utf8'));
-const scenesSpec = timing.scenes; // id, duration, voiceDuration, text
+const narration = JSON.parse(readFileSync(resolve(videoRoot, 'src', 'narration', 'narration.json'), 'utf8'));
+// narration.json 의 최신 duration 을 timing.scenes 에 반영
+const durationFromNar = Object.fromEntries(narration.scenes.map(s => [s.id, s.duration]));
+const scenesSpec = timing.scenes.map(s => ({ ...s, duration: durationFromNar[s.id] ?? s.duration }));
 
-// 각 scene 영상 원본 (webm 또는 trim 명세)
+// 영상 원본 (모션은 render-frames.mjs 로 생성한 .mp4, 녹화는 .webm)
 const sources = {
-  scene01: { file: 'scene01.webm' },
-  scene02: { file: 'scene02.webm' },
-  scene03: { file: 'scene03.webm' },
-  // timeline(마크): draft=10.3, overlay=12.3, sup_typed=23.7, sup_saved=24.1, overlay97=28.1,
-  //                 submit=34.1, list_sent=37.4, method_q=45.3, end=55.3
-  scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 24 },  // 로그인~overlay_score 끝
-  scene05: { file: 'scene040506.webm', trimStart: 24,   trimDur: 13 },  // supplement~접수
-  scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 },  // 조회+방법 질문
+  scene01: { file: 'scene01.mp4' },
+  scene02: { file: 'scene02.mp4' },
+  scene03: { file: 'scene03.mp4' },
+  scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 24 }, // 특수 처리 (segment-based cut, A/B/C)
+  scene05: { file: 'scene040506.webm', trimStart: 24,   trimDur: 13 }, // supplement~접수
+  scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 }, // 조회+방법 질문
   scene07: { file: 'scene07.webm' },
-  scene08: { file: 'scene08.webm', composed: true }, // xstack 결과를 만들 예정
-  scene09: { file: 'scene09.webm', composed: true }, // concat 결과를 만들 예정
-  scene10: { file: 'scene10.webm' },
-  scene11: { file: 'scene11.webm' },
+  scene08: { file: 'scene08.webm', composed: true },
+  scene09: { file: 'scene09.webm', composed: true },
+  scene10: { file: 'scene10.mp4' },
+  scene11: { file: 'scene11.mp4' },
 };
 
 function sh(cmd, label, opts = {}) {
@@ -56,12 +46,9 @@ function probeDur(file) {
   return parseFloat(out.trim());
 }
 
-// SCENE 08 합성: 세 녹화의 오른쪽 위 cropped 영역을 가로로 hstack
-// 각 녹화는 1440×900, "사용자 이름 + 토스트"가 뜨는 영역
-//   TopBar 사용자명: 오른쪽 상단 (대략 right=0 top=0 width=400 height=64)
-//   ToastContainer: 명세 디자인에서 오른쪽 상단, 토스트가 뜨면 width ~400, height ~80 (여러 개 쌓임)
-//   crop 영역: right 440px, top 0, height 400 → crop=440:400:(w-440):0
-// 가로 3개 hstack: 각 440×400 → 1320×400 → 1920×1080 캔버스 세로 중앙 pad
+// SCENE 08: 세 녹화의 crop(사용자 이름표 + 토스트) → hstack 가로 3개
+//   이름표 bar가 상단 52px, 토스트 top:160, bottom 아래로 ~300px. 전체 ~500px.
+//   crop 440×500, offset_y=0, offset_x=1000 (right side)
 function composeScene08() {
   const outFile = resolve(recDir, 'scene08.webm');
   const op = resolve(recDir, 'scene08-operator.webm');
@@ -72,20 +59,24 @@ function composeScene08() {
     return false;
   }
   const dur = Math.min(probeDur(op), probeDur(rA), probeDur(rB));
-  const d = Math.max(10, Math.min(dur, 50));
+  const d = Math.max(10, Math.min(dur, 60));
   const cmd = [
     'ffmpeg', '-y',
     '-i', `"${op}"`,
     '-i', `"${rA}"`,
     '-i', `"${rB}"`,
     '-filter_complex',
-    `"[0:v]crop=440:460:1000:0,setsar=1[a];[1:v]crop=440:460:1000:0,setsar=1[b];[2:v]crop=440:460:1000:0,setsar=1[c];[a][b][c]hstack=inputs=3[row];[row]scale=1920:-2,pad=1920:1080:0:(oh-ih)/2:white,setsar=1[v]"`,
+    `"[0:v]crop=440:500:1000:0,setsar=1[a];` +
+    `[1:v]crop=440:500:1000:0,setsar=1[b];` +
+    `[2:v]crop=440:500:1000:0,setsar=1[c];` +
+    `[a][b][c]hstack=inputs=3[row];` +
+    `[row]scale=1680:-2,setsar=1,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white[v]"`,
     '-map', '"[v]"',
     '-t', String(d),
     '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '28', '-row-mt', '1',
     `"${outFile}"`
   ].join(' ');
-  sh(cmd, 'SCENE 08 hstack 합성');
+  sh(cmd, 'SCENE 08 hstack (3분할 crop)');
   return true;
 }
 
@@ -103,7 +94,9 @@ function composeScene09() {
     '-i', `"${rA}"`,
     '-i', `"${rB}"`,
     '-filter_complex',
-    `"[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1[a];[1:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1[b];[a][b]concat=n=2:v=1[v]"`,
+    `"[0:v]scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1[a];` +
+    `[1:v]scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1[b];` +
+    `[a][b]concat=n=2:v=1[v]"`,
     '-map', '"[v]"',
     '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '28', '-row-mt', '1',
     `"${outFile}"`
@@ -112,123 +105,192 @@ function composeScene09() {
   return true;
 }
 
-// 각 scene mp4 clip 생성 (영상 + 음성, duration은 영상 길이)
-function makeClip(id) {
-  const src = sources[id];
+// 각 scene mp4 clip 생성 — 영상 길이 = max(음성 길이 + 0.8s, scene.duration)
+// 영상 길이가 target과 다르면 setpts 로 조정 (freeze 금지, 미세 slow/fast)
+function makeClip(s) {
+  const src = sources[s.id];
+  const voice = resolve(voiceDir, `${s.id}.mp3`);
+  const voiceLen = s.voiceDuration;
+  const target = Math.max(voiceLen + 0.8, s.duration);
+  const outFile = resolve(clipDir, `${s.id}.mp4`);
+
   const inFile = resolve(recDir, src.file);
   if (!existsSync(inFile)) {
-    console.warn(`${id}: 영상 없음 (${inFile}) — 검정 10s 자리채움`);
-    const outFile = resolve(clipDir, `${id}.mp4`);
-    const voice = resolve(voiceDir, `${id}.mp3`);
+    console.warn(`${s.id}: 영상 없음 → 흰 배경 placeholder`);
     const cmd = [
       'ffmpeg', '-y',
-      '-f', 'lavfi', '-i', 'color=c=white:s=1920x1080:d=10:r=30',
+      '-f', 'lavfi', '-i', `color=c=white:s=1920x1080:d=${target.toFixed(2)}:r=30`,
       '-i', `"${voice}"`,
       '-shortest',
       '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k',
       `"${outFile}"`
     ].join(' ');
-    sh(cmd, `${id} placeholder (영상 없음)`);
+    sh(cmd, `${s.id} placeholder`);
     return outFile;
   }
 
-  const voice = resolve(voiceDir, `${id}.mp3`);
-  if (!existsSync(voice)) {
-    console.warn(`${id}: 음성 없음 — 무음 사용`);
-  }
-
-  const outFile = resolve(clipDir, `${id}.mp4`);
-
-  // 영상 scale/pad: 모션은 이미 1920×1080, 녹화는 1440×900 → 중앙 pad
+  // 원본 영상 길이 결정
   const inProbe = probeDur(inFile);
+  const srcLen = src.trimDur || inProbe;
+  // setpts scale: target / srcLen > 1 이면 slow, < 1 이면 fast
+  const ptsScale = target / srcLen;
+
+  // 영상 필터
+  // 녹화 clip(모션 아닌 것)에는 미세 zoompan 적용 → freeze 방지
+  const isRecorded = !s.id.match(/^scene(0[123]|1[01])$/);
+  const commonTail = `scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30`;
+  const zoomTail = isRecorded
+    ? `,zoompan=z='min(zoom+0.0004\\,1.08)':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=1920x1080:fps=30`
+    : '';
+
   let vFilter;
-  if (id.match(/^scene0[4-6]$/)) {
-    // trim 범위에서 자르고 1920×1080 중앙 pad
-    const t0 = src.trimStart, dur = src.trimDur;
-    vFilter = `[0:v]trim=start=${t0}:duration=${dur},setpts=PTS-STARTPTS,scale=1680:1050:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30[v]`;
-  } else if (id === 'scene07') {
-    vFilter = `[0:v]scale=1680:1050:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30[v]`;
+  if (s.id === 'scene04') {
+    // 녹화 timeline (webm 실제):
+    //   0~10s: 로그인+입력+submit (유지, A)
+    //   10~22s: "작성 중" 응답 대기 (12s 를 3s 로, 4x fast — B)
+    //   22~24s: 요청서 완성 + overlay+ 보완 textarea 등장 (slow N× 로 target 맞춤, C)
+    const aLen = 10;
+    const bLen = 3;              // (22-10) * 0.25
+    const cSrcLen = 2;           // 녹화 22~24s
+    const cTarget = Math.max(2, target - aLen - bLen);
+    const cPts = cTarget / cSrcLen;
+    vFilter =
+      `[0:v]trim=0:10,setpts=PTS-STARTPTS[a04];` +
+      `[0:v]trim=10:22,setpts=(PTS-STARTPTS)*0.25[b04];` +
+      `[0:v]trim=22:24,setpts=(PTS-STARTPTS)*${cPts.toFixed(4)}[c04];` +
+      `[a04][b04][c04]concat=n=3:v=1[cat04];` +
+      `[cat04]${commonTail}${zoomTail}[v]`;
+  } else if (src.trimDur !== undefined) {
+    vFilter =
+      `[0:v]trim=start=${src.trimStart}:duration=${src.trimDur},setpts=(PTS-STARTPTS)*${ptsScale.toFixed(4)},` +
+      `${commonTail}${zoomTail}[v]`;
   } else {
-    // 모션·scene08·scene09는 이미 1920×1080
-    vFilter = `[0:v]scale=1920:1080,setsar=1,fps=30[v]`;
+    vFilter =
+      `[0:v]setpts=(PTS-STARTPTS)*${ptsScale.toFixed(4)},` +
+      `scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30${zoomTail}[v]`;
   }
 
-  // 음성 길이 측정
-  let voiceLen = 0;
-  if (existsSync(voice)) voiceLen = probeDur(voice);
+  // 음성 길이가 target 보다 짧으면 뒤에 침묵 pad
+  const aFilter = `[1:a]apad=pad_dur=${(target - voiceLen).toFixed(2)}[a]`;
 
-  // 영상 길이 결정 (trim 포함)
-  let clipLen = inProbe;
-  if (src.trimDur) clipLen = src.trimDur;
-  // 영상·음성 중 더 긴 쪽에 맞춤
-  const target = Math.max(clipLen, voiceLen + 0.3);
-  const aFilter = existsSync(voice)
-    ? `[1:a]apad=pad_dur=${Math.max(0, target - voiceLen).toFixed(2)}[a]`
-    : `aevalsrc=0:d=${target.toFixed(2)}[a]`;
+  const cmd = [
+    'ffmpeg', '-y',
+    '-i', `"${inFile}"`,
+    '-i', `"${voice}"`,
+    '-filter_complex', `"${vFilter};${aFilter}"`,
+    '-map', '"[v]"',
+    '-map', '"[a]"',
+    '-t', target.toFixed(2),
+    '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '192k',
+    `"${outFile}"`,
+  ].join(' ');
+  sh(cmd, `${s.id} clip (voice=${voiceLen.toFixed(2)}s · target=${target.toFixed(2)}s · pts×${ptsScale.toFixed(3)})`);
+  return outFile;
+}
 
-  // 영상이 음성보다 짧으면 마지막 프레임 freeze (tpad)
-  if (voiceLen + 0.3 > clipLen) {
-    const padDur = voiceLen + 0.3 - clipLen;
-    vFilter = vFilter.replace('[v]', `[vraw];[vraw]tpad=stop_mode=clone:stop_duration=${padDur.toFixed(2)}[v]`);
+// 각 scene 끝과 다음 scene 시작을 xfade 로 crossfade
+function concatXfade(clips, durations) {
+  // 각 전환 xfade duration = 0.5s
+  const X = 0.5;
+  // 누적 offset 계산 (전환마다 X 만큼 단축)
+  // v0 길이 d0, 전환 X 후 v1 시작은 offset = d0 - X
+  // v01 길이 = d0 + d1 - X
+  // v01 다음 전환은 offset = d0 + d1 - 2X
+  const outFile = resolve(outDir, 'video-concat.mp4');
+
+  const inputs = clips.map(f => ['-i', `"${f}"`]).flat();
+  let fc = '';
+  // 첫 cross-fade 는 [0:v][1:v]. 그 뒤는 [vN][M:v]  (label은 콜론 없이)
+  let lastRef = '[0:v]';
+  let runningLen = durations[0];
+  for (let i = 1; i < clips.length; i++) {
+    const nextLabel = (i === clips.length - 1) ? 'v' : `v${i}`;
+    const offset = (runningLen - X).toFixed(3);
+    fc += `${lastRef}[${i}:v]xfade=transition=fade:duration=${X}:offset=${offset}[${nextLabel}];`;
+    runningLen = runningLen + durations[i] - X;
+    lastRef = `[${nextLabel}]`;
   }
-
-  const inputs = existsSync(voice)
-    ? ['-i', `"${inFile}"`, '-i', `"${voice}"`]
-    : ['-i', `"${inFile}"`];
-  const filterComplex = existsSync(voice) ? `"${vFilter};${aFilter}"` : `"${vFilter}"`;
-  const map = existsSync(voice) ? ['-map', '"[v]"', '-map', '"[a]"'] : ['-map', '"[v]"'];
+  // 오디오 concat (crossfade 없이 연속)
+  const aParts = clips.map((_, i) => `[${i}:a]`).join('');
+  fc += `${aParts}concat=n=${clips.length}:v=0:a=1[a]`;
 
   const cmd = [
     'ffmpeg', '-y',
     ...inputs,
-    '-filter_complex', filterComplex,
-    ...map,
-    '-t', target.toFixed(2),
+    '-filter_complex', `"${fc}"`,
+    '-map', '"[v]"', '-map', '"[a]"',
     '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-    ...(existsSync(voice) ? ['-c:a', 'aac', '-b:a', '192k'] : []),
-    `"${outFile}"`
+    '-c:a', 'aac', '-b:a', '192k',
+    `"${outFile}"`,
   ].join(' ');
-  sh(cmd, `${id} clip (len=${target.toFixed(2)}s)`);
+  sh(cmd, `concat xfade (${clips.length} clips, ${X}s crossfade)`);
   return outFile;
 }
 
+// freezedetect 자가 검사
+function freezedetect(file) {
+  console.log('\n▶ freezedetect(d=3) 검사');
+  const log = execSync(
+    `ffmpeg -i "${file}" -vf "freezedetect=n=0.001:d=3" -f null - 2>&1`,
+    { encoding: 'utf8' }
+  );
+  const freezes = [...log.matchAll(/freeze_start: ([\d.]+)[\s\S]*?freeze_duration: ([\d.]+)[\s\S]*?freeze_end: ([\d.]+)/g)];
+  if (freezes.length === 0) {
+    console.log('  freeze 구간 없음 (d≥3s)');
+    return [];
+  }
+  const list = freezes.map(m => ({
+    start: parseFloat(m[1]),
+    duration: parseFloat(m[2]),
+    end: parseFloat(m[3]),
+  }));
+  console.log(`  ${list.length}개 freeze(d≥3s) 감지:`);
+  for (const f of list) {
+    console.log(`    ${f.start.toFixed(2)}s ~ ${f.end.toFixed(2)}s (${f.duration.toFixed(2)}s)`);
+  }
+  return list;
+}
+
 // ───────────── 실행 ─────────────
-console.log('[1/4] SCENE 08·09 합성');
+console.log('[1/5] SCENE 08·09 합성');
 composeScene08();
 composeScene09();
 
-console.log('\n[2/4] 11개 scene clip 생성');
+console.log('\n[2/5] 11개 scene clip 생성');
 const clipFiles = [];
+const durations = [];
 for (const s of scenesSpec) {
-  const f = makeClip(s.id);
+  const f = makeClip(s);
   clipFiles.push(f);
+  durations.push(Math.max(s.voiceDuration + 0.8, s.duration));
 }
+console.log(`\n각 clip 길이: ${durations.map((d, i) => `${scenesSpec[i].id}=${d.toFixed(2)}s`).join(' · ')}`);
+console.log(`합계 (xfade 11개 · 0.5s): ${(durations.reduce((a,b)=>a+b, 0) - 0.5 * (durations.length - 1)).toFixed(2)}s`);
 
-console.log('\n[3/4] concat');
-const concatList = resolve(clipDir, 'concat.txt');
-writeFileSync(concatList, clipFiles.map(f => `file '${f.replace(/\\/g,'/')}'`).join('\n'), 'utf8');
-const concatMp4 = resolve(outDir, 'video-concat.mp4');
-sh(`ffmpeg -y -f concat -safe 0 -i "${concatList}" -c:v libx264 -crf 20 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 192k "${concatMp4}"`, 'concat');
+console.log('\n[3/5] xfade concat');
+const concatMp4 = concatXfade(clipFiles, durations);
+const finalDur = probeDur(concatMp4);
+console.log(`concat 결과 길이: ${finalDur.toFixed(2)}s`);
 
-console.log('\n[4/4] BGM 믹싱 + 자막 + 최종 인코딩');
+console.log('\n[4/5] BGM 믹싱 + 자막 (ass alpha 수정) + 최종 인코딩');
 const bgm = resolve(outDir, 'bgm-5min.mp3');
 const srt = resolve(outDir, 'subtitles.srt');
-const finalDur = probeDur(concatMp4);
-console.log(`최종 길이: ${finalDur.toFixed(2)}s`);
 
-// BGM + 자막 하드서브
-// Windows 경로 escape 회피: cwd=outDir 로 실행하고 상대경로 subtitles.srt 사용
 const finalMp4 = resolve(outDir, 'ordo-demo-final.mp4');
 const previewMp4 = resolve(outDir, 'preview.mp4');
 
-const finalFilter = `"[1:a]aformat=channel_layouts=stereo,volume=-14dB,atrim=0:${finalDur.toFixed(2)},asetpts=PTS-STARTPTS[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"`;
+const finalFilter =
+  `"[1:a]aformat=channel_layouts=stereo,volume=-16dB,atrim=0:${finalDur.toFixed(2)},asetpts=PTS-STARTPTS[bgm];` +
+  `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"`;
 
+// 자막: force_style 의 alpha 를 00(불투명)으로 수정, FontName Malgun Gothic
 sh(
   `ffmpeg -y -i "${concatMp4}" -i "${bgm}" -filter_complex ${finalFilter} ` +
   `-map 0:v -map "[aout]" ` +
-  `-vf "subtitles=subtitles.srt:force_style='FontName=Pretendard,FontSize=22,PrimaryColour=&HFFFFFFFF,OutlineColour=&HFF000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=48'" ` +
-  `-c:v libx264 -crf 20 -preset slow -pix_fmt yuv420p ` +
+  `-vf "subtitles=subtitles.srt:force_style='FontName=Malgun Gothic,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=70'" ` +
+  `-c:v libx264 -crf 20 -preset veryfast -pix_fmt yuv420p ` +
   `-c:a aac -b:a 192k ` +
   `"${finalMp4}"`,
   'final 1080p',
@@ -240,6 +302,11 @@ sh(
   'preview 720p'
 );
 
+console.log('\n[5/5] freezedetect 자가 검사');
+const freezes = freezedetect(finalMp4);
+writeFileSync(resolve(outDir, 'freezedetect.json'), JSON.stringify({ finalDur, freezes }, null, 2));
+
 console.log('\n완료:');
 console.log('  final:   ', finalMp4);
 console.log('  preview: ', previewMp4);
+console.log('  freeze 로그:', resolve(outDir, 'freezedetect.json'));

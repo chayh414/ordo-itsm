@@ -6,25 +6,27 @@
 <meta name="scene-duration" content="20" />
 <link rel="stylesheet" href="common.css" />
 <style>
+  html, body { background: var(--bg); }
   .stage {
     display: flex;
     align-items: center;
     justify-content: center;
+    animation: slowPan 20s linear forwards;
+    transform-origin: center;
   }
-
-  .wrap {
-    width: 1120px;
+  @keyframes slowPan {
+    0%   { transform: scale(1.00) translateY(16px); }
+    100% { transform: scale(1.04) translateY(-10px); }
   }
-
+  .wrap { width: 1120px; }
   .label {
     font-size: 18px;
     color: var(--mute);
     letter-spacing: 0.02em;
     margin-bottom: 36px;
     opacity: 0;
-    animation: fadeUp 0.9s ease-out 0.3s forwards;
+    animation: fadeUp 1.2s ease-out 0.6s forwards;
   }
-
   .row {
     display: grid;
     grid-template-columns: 60px 1fr;
@@ -33,36 +35,22 @@
     border-top: 1px solid var(--line);
     opacity: 0;
     transform: translateY(16px);
-    animation: fadeUp 0.9s ease-out forwards;
   }
   .row:last-child { border-bottom: 1px solid var(--line); }
-
-  .row:nth-of-type(1) { animation-delay: 1.2s; }
-  .row:nth-of-type(2) { animation-delay: 2.4s; }
-  .row:nth-of-type(3) { animation-delay: 3.6s; }
-  .row:nth-of-type(4) { animation-delay: 4.8s; }
-
-  .num {
-    font-size: 20px;
-    color: var(--faint);
-    font-feature-settings: 'tnum';
+  .row:nth-of-type(1) { animation: fadeUp 1.4s ease-out 2.2s forwards, numFocus 2.4s ease-in-out 4.6s forwards; }
+  .row:nth-of-type(2) { animation: fadeUp 1.4s ease-out 5.6s forwards, numFocus 2.4s ease-in-out 8.0s forwards; }
+  .row:nth-of-type(3) { animation: fadeUp 1.4s ease-out 9.0s forwards, numFocus 2.4s ease-in-out 11.4s forwards; }
+  .row:nth-of-type(4) { animation: fadeUp 1.4s ease-out 12.4s forwards, numFocus 2.4s ease-in-out 14.8s forwards; }
+  @keyframes numFocus {
+    0%   { color: var(--faint); }
+    40%  { color: var(--ink); }
+    100% { color: var(--faint); }
   }
-
-  .text {
-    font-size: 48px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    color: var(--ink);
-    line-height: 1.15;
-  }
-
+  .num { font-size: 20px; color: var(--faint); font-feature-settings: 'tnum'; }
+  .text { font-size: 48px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); line-height: 1.15; }
   @keyframes fadeUp {
     to { opacity: 1; transform: translateY(0); }
   }
-
-  /* 끝 2초 전체 페이드아웃 */
-  body { animation: fadeOutAll 2s ease-in 18s forwards; }
-  @keyframes fadeOutAll { to { opacity: 0; } }
 </style>
 </head>
 <body>

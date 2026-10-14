@@ -31,7 +31,7 @@ for (const s of spec.scenes) {
   const finalFile = resolve(voiceDir, `${s.id}.mp3`);
   if (existsSync(finalFile)) unlinkSync(finalFile);
   console.log(`[${s.id}] 생성 중...`);
-  const { audioFilePath } = await tts.toFile(voiceDir, s.text);
+  const { audioFilePath } = await tts.toFile(voiceDir, s.text, { rate: spec.rate });
   renameSync(audioFilePath, finalFile);
   const dur = probeDuration(finalFile);
   console.log(`  → ${finalFile}  (${dur.toFixed(2)}s / scene ${s.duration}s)`);

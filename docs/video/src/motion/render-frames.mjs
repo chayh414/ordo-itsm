@@ -1,0 +1,89 @@
+// 각 모션 HTML에서 duration 만큼 1/30초마다 Playwright screenshot → ffmpeg concat → mp4 (30fps 매끈)
+// 사용: node src/motion/render-frames.mjs
+import { chromium } from 'playwright';
+import { readFileSync, mkdirSync, existsSync, rmSync, unlinkSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const videoRoot = resolve(__dirname, '..', '..');
+const motionDir = __dirname;
+const narration = JSON.parse(readFileSync(resolve(videoRoot, 'src', 'narration', 'narration.json'), 'utf8'));
+
+const outDir = resolve(videoRoot, 'assets', 'recordings');
+mkdirSync(outDir, { recursive: true });
+
+const sceneIds = ['scene01', 'scene02', 'scene03', 'scene10', 'scene11'];
+const durationFor = Object.fromEntries(narration.scenes.map(s => [s.id, s.duration]));
+
+const browser = await chromium.launch();
+for (const id of sceneIds) {
+  const html = resolve(motionDir, `${id}.html`);
+  const dur = durationFor[id] || 20;
+  const totalFrames = Math.round(dur * 30);
+  const framesDir = resolve(outDir, '_frames', id);
+  if (existsSync(framesDir)) rmSync(framesDir, { recursive: true, force: true });
+  mkdirSync(framesDir, { recursive: true });
+
+  console.log(`[${id}] duration=${dur}s · ${totalFrames} 프레임`);
+  const context = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    deviceScaleFactor: 1,
+  });
+  const page = await context.newPage();
+  await page.goto(pathToFileURL(html).toString(), { waitUntil: 'load' });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(300);
+
+  // 모든 CSS animation 을 멈춤
+  await page.evaluate(() => {
+    for (const a of document.getAnimations()) {
+      try { a.pause(); } catch (e) {}
+    }
+  });
+
+  const t0 = Date.now();
+  for (let i = 0; i < totalFrames; i++) {
+    const tMs = (i * 1000) / 30;
+    await page.evaluate((t) => {
+      for (const a of document.getAnimations()) {
+        try { a.currentTime = t; } catch (e) {}
+      }
+    }, tMs);
+    await page.screenshot({
+      path: resolve(framesDir, `f_${String(i).padStart(5, '0')}.png`),
+      type: 'png',
+      fullPage: false,
+      clip: { x: 0, y: 0, width: 1920, height: 1080 },
+    });
+    if (i % 60 === 0) {
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      process.stdout.write(`  ${i}/${totalFrames}  ${elapsed}s\r`);
+    }
+  }
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  console.log(`\n  캡처 완료 (${elapsed}s)`);
+
+  await context.close();
+
+  // ffmpeg: PNG 시퀀스 → mp4
+  const target = resolve(outDir, `${id}.mp4`);
+  if (existsSync(target)) unlinkSync(target);
+  const cmd = [
+    'ffmpeg', '-y',
+    '-framerate', '30',
+    '-i', `"${resolve(framesDir, 'f_%05d.png')}"`,
+    '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast',
+    '-pix_fmt', 'yuv420p',
+    '-r', '30',
+    `"${target}"`,
+  ].join(' ');
+  execSync(cmd, { stdio: 'inherit' });
+  console.log(`  → ${target}`);
+
+  // 임시 프레임 삭제
+  rmSync(framesDir, { recursive: true, force: true });
+}
+await browser.close();
+console.log('\n모션 프레임 렌더링 완료.');
