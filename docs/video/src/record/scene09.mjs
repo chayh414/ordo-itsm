@@ -66,7 +66,7 @@ async function recordScene(email, label, outName, msg, useQuick, waitResponsePat
   } catch {
     mark(`${outName}_response_timeout`);
   }
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(1000);
   mark(`${outName}_end`);
   const video = page.video();
   await ctx.close();

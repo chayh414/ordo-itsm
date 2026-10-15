@@ -104,11 +104,11 @@ try {
   });
   mark('incident_after');
 
-  // 토스트 등장 유지 (SSE polling ~3-5s 걸림)
+  // 토스트 등장 유지 (장애 알림 7s)
   await Promise.all([
-    op.page.waitForTimeout(5500),
-    reqA.page.waitForTimeout(5500),
-    reqB.page.waitForTimeout(5500),
+    op.page.waitForTimeout(7000),
+    reqA.page.waitForTimeout(7000),
+    reqB.page.waitForTimeout(7000),
   ]);
   mark('incident_toast_shown');
 
@@ -123,10 +123,11 @@ try {
   }
   mark('sla_near_after');
 
+  // SLA 임박 토스트 카운트다운 유지 (6s · 더 늘리면 freeze)
   await Promise.all([
-    op.page.waitForTimeout(5500),
-    reqA.page.waitForTimeout(5500),
-    reqB.page.waitForTimeout(5500),
+    op.page.waitForTimeout(6000),
+    reqA.page.waitForTimeout(6000),
+    reqB.page.waitForTimeout(6000),
   ]);
   mark('end');
 

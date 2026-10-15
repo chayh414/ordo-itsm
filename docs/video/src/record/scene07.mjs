@@ -58,21 +58,22 @@ try {
   await page.waitForURL('**/backoffice', { timeout: 10000 });
   await page.waitForTimeout(1500);
 
-  // 목록 맨 위 (주인공 요청 ORD-20261015-0001) 선택
-  // DOM: ul > li > button (BackofficePage.tsx:144, 146)
-  const firstRow = page.locator('ul li button').first();
-  await firstRow.waitFor({ state: 'visible', timeout: 15000 });
-  await firstRow.click();
-  mark('first_row_click');
-  await page.waitForTimeout(2500);
+  // 목록에서 ORD-20261014-0001 (방화벽, 이력 11→9→7) 선택
+  const row0001 = page.locator('ul li button', { hasText: 'ORD-20261014-0001' }).first();
+  await row0001.waitFor({ state: 'visible', timeout: 15000 });
+  await row0001.click();
+  mark('row_0001_click');
+  await page.waitForTimeout(2000);
 
-  // 상세 영역을 오른쪽 패널 안쪽 스크롤 (overflow-auto section)
+  // 상세 영역 하단 '위험 평가 이력' 영역까지 스크롤
   const rightPanel = page.locator('main > section').nth(1);
   await rightPanel.hover();
-  for (let y = 0; y < 2200; y += 200) {
-    await page.mouse.wheel(0, 200);
-    await page.waitForTimeout(600);
+  for (let y = 0; y < 2600; y += 180) {
+    await page.mouse.wheel(0, 180);
+    await page.waitForTimeout(450);
   }
+  mark('scroll_done');
+  await page.waitForTimeout(1500);
   mark('scroll_done');
   await page.waitForTimeout(2000);
   mark('end');

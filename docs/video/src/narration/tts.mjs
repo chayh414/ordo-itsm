@@ -30,8 +30,9 @@ await tts.setMetadata(spec.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
 for (const s of spec.scenes) {
   const finalFile = resolve(voiceDir, `${s.id}.mp3`);
   if (existsSync(finalFile)) unlinkSync(finalFile);
+  const ttsText = s.tts || s.text; // 음성 생성용 (치환 표기)
   console.log(`[${s.id}] 생성 중...`);
-  const { audioFilePath } = await tts.toFile(voiceDir, s.text, { rate: spec.rate });
+  const { audioFilePath } = await tts.toFile(voiceDir, ttsText, { rate: spec.rate });
   renameSync(audioFilePath, finalFile);
   const dur = probeDuration(finalFile);
   console.log(`  → ${finalFile}  (${dur.toFixed(2)}s / scene ${s.duration}s)`);

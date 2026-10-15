@@ -24,6 +24,7 @@ const sources = {
   scene02: { file: 'scene02.mp4' },
   scene03: { file: 'scene03.mp4' },
   scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 24 }, // 특수 처리 (segment-based cut, A/B/C)
+  scene04b: { file: 'scene04b.webm' },                                 // 민감정보 마스킹 신규 녹화
   scene05: { file: 'scene040506.webm', trimStart: 24,   trimDur: 13 }, // supplement~접수
   scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 }, // 조회+방법 질문
   scene07: { file: 'scene07.webm' },
@@ -138,26 +139,27 @@ function makeClip(s) {
 
   // 영상 필터
   // 녹화 clip(모션 아닌 것)에는 미세 zoompan 적용 → freeze 방지
-  const isRecorded = !s.id.match(/^scene(0[123]|1[01])$/);
+  const isRecorded = !s.id.match(/^scene(0[123]|1[01])$/) || s.id === 'scene04b';
+  // 녹화는 1680 pad, 모션(이미 1920×1080)은 그대로. zoomTail 이 crop 하므로 pad 영역이 좀 커도 상관없음
   const commonTail = `scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30`;
+  // zoompan 강화: 각 clip 안에서 지속적인 미세 pan + zoom bounce 로 freeze 완전 제거
+  // 't' 는 output time 변수. sin() 로 pan, zoom 은 계속 변화
   const zoomTail = isRecorded
-    ? `,zoompan=z='min(zoom+0.0004\\,1.08)':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=1:s=1920x1080:fps=30`
+    ? `,scale=2048:1152:force_original_aspect_ratio=increase,crop=1920:1080:x='(iw-1920)/2+32*sin(t/2)':y='(ih-1080)/2+20*cos(t/2.6)'`
     : '';
 
   let vFilter;
   if (s.id === 'scene04') {
-    // 녹화 timeline (webm 실제):
-    //   0~10s: 로그인+입력+submit (유지, A)
-    //   10~22s: "작성 중" 응답 대기 (12s 를 3s 로, 4x fast — B)
-    //   22~24s: 요청서 완성 + overlay+ 보완 textarea 등장 (slow N× 로 target 맞춤, C)
-    const aLen = 10;
-    const bLen = 3;              // (22-10) * 0.25
-    const cSrcLen = 2;           // 녹화 22~24s
-    const cTarget = Math.max(2, target - aLen - bLen);
+    // 녹화 timeline (webm 실제): 0~10s 로그인+입력, 10~22s "작성 중"(4x fast), 22~24s 요청서+overlay(slow)
+    // target=15s 로 단축: A(8s) + B(2.3s · 14s→2.3s) + C(4.7s · 2s→4.7s, 2.35x slow)
+    const aLen = 8;
+    const bPts = 2.3 / 14;
+    const cSrcLen = 2;
+    const cTarget = Math.max(2, target - aLen - 2.3);
     const cPts = cTarget / cSrcLen;
     vFilter =
-      `[0:v]trim=0:10,setpts=PTS-STARTPTS[a04];` +
-      `[0:v]trim=10:22,setpts=(PTS-STARTPTS)*0.25[b04];` +
+      `[0:v]trim=0:8,setpts=PTS-STARTPTS[a04];` +
+      `[0:v]trim=8:22,setpts=(PTS-STARTPTS)*${bPts.toFixed(4)}[b04];` +
       `[0:v]trim=22:24,setpts=(PTS-STARTPTS)*${cPts.toFixed(4)}[c04];` +
       `[a04][b04][c04]concat=n=3:v=1[cat04];` +
       `[cat04]${commonTail}${zoomTail}[v]`;
@@ -229,16 +231,16 @@ function concatXfade(clips, durations) {
   return outFile;
 }
 
-// freezedetect 자가 검사
+// freezedetect 자가 검사 (사용자 지시: n=0.003 · d=4)
 function freezedetect(file) {
-  console.log('\n▶ freezedetect(d=3) 검사');
+  console.log('\n▶ freezedetect(n=0.003, d=4) 검사');
   const log = execSync(
-    `ffmpeg -i "${file}" -vf "freezedetect=n=0.001:d=3" -f null - 2>&1`,
+    `ffmpeg -i "${file}" -vf "freezedetect=n=0.003:d=4" -f null - 2>&1`,
     { encoding: 'utf8' }
   );
   const freezes = [...log.matchAll(/freeze_start: ([\d.]+)[\s\S]*?freeze_duration: ([\d.]+)[\s\S]*?freeze_end: ([\d.]+)/g)];
   if (freezes.length === 0) {
-    console.log('  freeze 구간 없음 (d≥3s)');
+    console.log('  freeze 구간 없음 (n=0.003, d≥4s)');
     return [];
   }
   const list = freezes.map(m => ({
@@ -246,7 +248,7 @@ function freezedetect(file) {
     duration: parseFloat(m[2]),
     end: parseFloat(m[3]),
   }));
-  console.log(`  ${list.length}개 freeze(d≥3s) 감지:`);
+  console.log(`  ${list.length}개 freeze(n=0.003, d≥4s) 감지:`);
   for (const f of list) {
     console.log(`    ${f.start.toFixed(2)}s ~ ${f.end.toFixed(2)}s (${f.duration.toFixed(2)}s)`);
   }
@@ -282,14 +284,15 @@ const finalMp4 = resolve(outDir, 'ordo-demo-final.mp4');
 const previewMp4 = resolve(outDir, 'preview.mp4');
 
 const finalFilter =
-  `"[1:a]aformat=channel_layouts=stereo,volume=-16dB,atrim=0:${finalDur.toFixed(2)},asetpts=PTS-STARTPTS[bgm];` +
+  `"[1:a]aformat=channel_layouts=stereo,volume=-14dB,atrim=0:${finalDur.toFixed(2)},asetpts=PTS-STARTPTS[bgm];` +
   `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"`;
 
-// 자막: force_style 의 alpha 를 00(불투명)으로 수정, FontName Malgun Gothic
+// 자막: BorderStyle=3 반투명 검정 박스 + 얇은 외곽선 (libass BorderStyle=4 미지원 회피)
+// FontSize=34 · MarginV=60 (요약 숫자카드 안 가리게)
 sh(
   `ffmpeg -y -i "${concatMp4}" -i "${bgm}" -filter_complex ${finalFilter} ` +
   `-map 0:v -map "[aout]" ` +
-  `-vf "subtitles=subtitles.srt:force_style='FontName=Malgun Gothic,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=70'" ` +
+  `-vf "subtitles=subtitles.srt:force_style='FontName=Malgun Gothic,FontSize=34,PrimaryColour=&H00FFFFFF,BackColour=&HA0000000,BorderStyle=3,Outline=8,Shadow=0,MarginV=60,PlayResX=1920,PlayResY=1080'" ` +
   `-c:v libx264 -crf 20 -preset veryfast -pix_fmt yuv420p ` +
   `-c:a aac -b:a 192k ` +
   `"${finalMp4}"`,

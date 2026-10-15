@@ -7,11 +7,8 @@
 <link rel="stylesheet" href="common.css" />
 <style>
   body {
-    background: var(--bg);
-    animation: bgToBlue 1.4s ease-in-out 0.3s forwards;
-  }
-  @keyframes bgToBlue {
-    to { background: var(--accent); }
+    /* 즉시 파랑으로 시작 (xfade 중 흰→파랑 전환 flash 방지) */
+    background: var(--accent);
   }
   .stage {
     display: flex; align-items: center; justify-content: center;

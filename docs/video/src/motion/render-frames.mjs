@@ -20,13 +20,18 @@ const durationFor = Object.fromEntries(narration.scenes.map(s => [s.id, s.durati
 const browser = await chromium.launch();
 for (const id of sceneIds) {
   const html = resolve(motionDir, `${id}.html`);
-  const dur = durationFor[id] || 20;
+  const htmlContent = readFileSync(html, 'utf8');
+  const htmlDurMatch = htmlContent.match(/scene-duration"\s+content="(\d+)"/);
+  const htmlDur = htmlDurMatch ? parseInt(htmlDurMatch[1], 10) : 20;
+  const dur = durationFor[id] || htmlDur;
+  // 애니메이션 가속 비율 — scene duration 이 짧으면 animation 을 더 빠르게 흘림
+  const animScale = htmlDur / dur;
   const totalFrames = Math.round(dur * 30);
   const framesDir = resolve(outDir, '_frames', id);
   if (existsSync(framesDir)) rmSync(framesDir, { recursive: true, force: true });
   mkdirSync(framesDir, { recursive: true });
 
-  console.log(`[${id}] duration=${dur}s · ${totalFrames} 프레임`);
+  console.log(`[${id}] duration=${dur}s · htmlDur=${htmlDur}s · animScale=${animScale.toFixed(2)}x · ${totalFrames} 프레임`);
   const context = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
     deviceScaleFactor: 1,
@@ -45,7 +50,7 @@ for (const id of sceneIds) {
 
   const t0 = Date.now();
   for (let i = 0; i < totalFrames; i++) {
-    const tMs = (i * 1000) / 30;
+    const tMs = ((i * 1000) / 30) * animScale;
     await page.evaluate((t) => {
       for (const a of document.getAnimations()) {
         try { a.currentTime = t; } catch (e) {}

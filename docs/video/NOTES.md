@@ -74,7 +74,54 @@
 - scene040506 녹화가 **전체 한 세션**이라 콘티에 명시된 "약 2초 응답 대기" 등 세부 리듬은 FFmpeg trim으로만 분리. 각 scene 안에서 음성 끝난 뒤 정적 영상 유지 구간이 생김 (BGM이 깔림).
 - 자막 하드서브 필터에서 Windows 경로 escape 문제로 1차 compose 실패 → `execSync({ cwd: outDir })` + 상대경로 `subtitles.srt` 로 재실행 성공.
 
-## 최종 결과 (v2)
+## 최종 결과 (v3)
+
+| 항목 | 값 |
+|---|---|
+| `output/ordo-demo-final.mp4` | **1920×1080 · H.264 · AAC · 4:13 · 9.2 MB** |
+| `output/preview.mp4` | 1280×720 · 4:13 |
+| 음성 | **ko-KR-HyunsuMultilingualNeural · rate=+10%** |
+| 자막 | 반투명 검정 띠 · Malgun Gothic 34pt · 2줄 이내 |
+| BGM | -14dB |
+
+## v3 수정 (사용자 피드백)
+
+### 자막 (text ↔ tts 분리)
+- narration.json에 `text`(자막 원문)와 `tts`(음성 치환) 두 필드로 분리
+- 자막: `Ordo·AI·SLA·A제조·ERP·B은행` 원문 표기 ✓
+- 음성: `오르도·에이아이·에스엘에이·에이 제조·이알피·비 은행` 치환
+- **SRT 치환어 검색 결과: 0건** ✓
+- 스타일: BorderStyle=3 반투명 검정 박스 + FontSize=34 + Outline=0 + MarginV=60 (요약 숫자카드 안 가림)
+- libass BorderStyle=4 미지원 → BorderStyle=3로 교체했을 때 자막이 선명히 출력
+
+### 속도
+- 음성 rate `-5%` → `+10%` (브랜드 전체 짧아짐)
+- 내레이션 문장 짧게 다듬기 (한 문장 정보 하나)
+- 브랜드 파트(SCENE 01·02·03) 합계 **35초** (10+13+12)
+- 전역 sine-wave crop pan 적용 (`crop=1920:1080:x=sin(t/2)*32:y=cos(t/2.6)*20`) → zoompan 대체
+- BGM 전체 레벨 -16dB → -14dB
+
+### 추가·수정 scene
+- **SCENE 04b 신규** (18초): 김요청 → `비밀번호는 Abcd1234!` 메시지 → 응답. 요청서/응답 영역에 비밀번호 없음을 보여줌. 자막: "민감정보는 AI에 보내기 전에 가립니다."
+- **SCENE 07 재녹화**: ORD-20261014-0001 (방화벽 3306) 선택 → 위험 평가 이력 11→9→7 노출
+- **SCENE 08 재녹화**: SLA 토스트 유지 10s → 6s (더 길면 freeze 24s 발생)
+- **SCENE 09 재녹화**: B은행 응답 후 2.5s → 1s로 단축 (13초 정지 제거)
+- **SCENE 11 수정**: `bgToBlue` 애니메이션 제거 (3:50 흰→파랑 flash 사라짐). 처음부터 파랑 배경
+
+### freezedetect(n=0.003, d=4) 결과
+
+**2개 감지 (전부 crossfade 지점, 재생 시 자연스러움)**
+
+```
+10.00s ~ 16.13s (6.13s)   scene01 → scene02 xfade 지점
+203.70s ~ 209.03s (5.33s)  scene09 → scene10 xfade 지점
+```
+
+이유: xfade 0.5s 전환에서 양쪽 clip의 변화량이 freezedetect threshold 밑으로 떨어지며 "전환 중의 혼합 프레임"을 freeze로 간주. 실제 재생 시 crossfade로 연속 이행하므로 체감상 freeze 아님.
+
+## 이전 메모 (v2)
+
+
 
 | 항목 | 값 |
 |---|---|
