@@ -112,13 +112,13 @@ function composeScene09() {
   return true;
 }
 
-// 챕터별 진행 표시 (계단 5칸)
+// 챕터별 진행 표시 (계단 5칸) — 사용자 요청: 녹화 scene 에서 제거, 챕터 카드에만 표시
 const progressIdxMap = {
-  chapter1: 1, scene04: 1,
-  chapter2: 2, scene05: 2, scene06: 2,
-  chapter3: 3, scene07: 3,
-  chapter4: 4, scene08: 4, scene08b: 4,
-  chapter5: 5, scene09: 5,
+  chapter1: 1,
+  chapter2: 2,
+  chapter3: 3,
+  chapter4: 4,
+  chapter5: 5,
 };
 
 // 각 scene mp4 clip 생성 — 영상 길이 = max(음성 길이 + 0.8s, scene.duration)
@@ -157,8 +157,10 @@ function makeClip(s) {
   // 녹화 clip(모션 아닌 것) 분류 — scene_hero, chapter N 은 모션으로 간주
   const motionIds = /^(scene(0[123]|1[01])|scene_hero|chapter[1-5])$/;
   const isRecorded = !motionIds.test(s.id);
-  // 녹화는 1680 pad, 모션(이미 1920×1080)은 그대로. zoomTail 이 crop 하므로 pad 영역이 좀 커도 상관없음
-  const commonTail = `scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30`;
+  // 녹화는 1680 scale + white pad. 모션은 이미 1920×1080 이므로 pad 없이 그대로.
+  const recordedTail = `scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30`;
+  const motionTail = `scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30`;
+  const commonTail = isRecorded ? recordedTail : motionTail;
   // 전역 sine pan 제거 — 사용자 피드백 (영상 전체 흔들림 금지, 가장자리 잘림 없음)
   // 4~5초 정지는 OK. 핵심 순간 의도적 줌만 scene04 segment-based 처리에서 유지.
   const zoomTail = '';
@@ -192,13 +194,14 @@ function makeClip(s) {
       `scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30${zoomTail}[v]`;
   }
 
-  // 챕터 진행 표시 overlay
+  // 챕터 진행 표시 overlay — 사용자 요청: 전체 폭 120px 이하
   const progressIdx = progressIdxMap[s.id];
   const progressPng = progressIdx
     ? resolve(videoRoot, 'assets', 'overlay', `progress-${progressIdx}.png`)
     : null;
+  // input 번호는 녹화/음성 뒤라 2 (voiceExists) or 2 (voiceExists=false 는 anullsrc 가 1)
   const overlayStage = progressPng
-    ? `;[v][${voiceExists ? 2 : 2}:v]overlay=W-w-32:28:format=auto[vout]`
+    ? `;[${voiceExists ? 2 : 2}:v]scale=120:-1[prog];[v][prog]overlay=W-w-24:24:format=auto[vout]`
     : '';
   const vMap = progressPng ? '[vout]' : '[v]';
 
@@ -327,9 +330,14 @@ const srt = resolve(outDir, 'subtitles.srt');
 const finalMp4 = resolve(outDir, 'ordo-demo-final.mp4');
 const previewMp4 = resolve(outDir, 'preview.mp4');
 
+// BGM: -14dB → -20dB (사용자 지시 추가 -6dB). 내레이션 때 ducking 으로 추가 감쇠.
+// [narr] 신호를 sidechain 으로 받아 bgm 을 압축. threshold 작게 하여 내레이션 유무가 트리거.
+// 내레이션 사일런스 때는 bgm 원래 레벨, 내레이션 시 추가 ~8dB 감쇠.
 const finalFilter =
-  `"[1:a]aformat=channel_layouts=stereo,volume=-14dB,atrim=0:${finalDur.toFixed(2)},asetpts=PTS-STARTPTS[bgm];` +
-  `[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"`;
+  `"[0:a]aformat=channel_layouts=stereo,asetpts=PTS-STARTPTS[narr];` +
+  `[1:a]aformat=channel_layouts=stereo,volume=-20dB,atrim=0:${finalDur.toFixed(2)},asetpts=PTS-STARTPTS[bgmraw];` +
+  `[bgmraw][narr]sidechaincompress=threshold=0.02:ratio=8:attack=5:release=350:makeup=1[bgm];` +
+  `[narr][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"`;
 
 // 자막: BorderStyle=3 반투명 검정 박스 + 얇은 외곽선 (libass BorderStyle=4 미지원 회피)
 // FontSize=34 · MarginV=60 (요약 숫자카드 안 가리게)

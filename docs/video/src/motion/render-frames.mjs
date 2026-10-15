@@ -14,7 +14,8 @@ const narration = JSON.parse(readFileSync(resolve(videoRoot, 'src', 'narration',
 const outDir = resolve(videoRoot, 'assets', 'recordings');
 mkdirSync(outDir, { recursive: true });
 
-const sceneIds = [
+const argIds = process.argv.slice(2).filter(a => !a.startsWith('-'));
+const sceneIds = argIds.length ? argIds : [
   'scene01', 'scene02', 'scene03', 'scene10', 'scene11',
   'scene_hero', 'chapter1', 'chapter2', 'chapter3', 'chapter4', 'chapter5',
 ];

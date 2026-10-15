@@ -3,19 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <title>Chapter 3</title>
-<meta name="scene-duration" content="1.8" />
+<meta name="scene-duration" content="2.5" />
 <link rel="stylesheet" href="common.css" />
 <style>
   html, body { background: var(--bg); overflow: hidden; }
   .stage { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 24px; }
-  .num { font-size: 26px; color: var(--mute); letter-spacing: 0.06em; opacity: 0; animation: fadeUp 0.5s ease-out 0.15s forwards; }
-  .title { font-size: 104px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--ink); opacity: 0; transform: translateY(18px); animation: fadeUp 0.6s ease-out 0.35s forwards; }
+  .num { font-size: 26px; color: var(--mute); letter-spacing: 0.06em; opacity: 0; animation: fadeUp 0.4s ease-out 0.1s forwards; }
+  .title { font-size: 104px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; color: var(--ink); opacity: 0; transform: translateY(18px); animation: fadeUp 0.4s ease-out 0.25s forwards; }
   @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
-  .wipe { position: fixed; inset: 0; background: var(--ink); animation: stairWipe 0.7s cubic-bezier(.37,0,.37,1) forwards; }
-  @keyframes stairWipe {
-    0%   { clip-path: polygon(0 100%, 100% 100%, 100% 0, 0 0); }
-    100% { clip-path: polygon(0 100%, 20% 100%, 20% 80%, 40% 80%, 40% 60%, 60% 60%, 60% 40%, 80% 40%, 80% 20%, 100% 20%, 100% 0, 0 0, 0 0); }
-  }
 </style>
 </head>
 <body>
@@ -23,6 +18,5 @@
     <div class="num">03</div>
     <div class="title">운영팀에 도착하다</div>
   </div>
-  <div class="wipe"></div>
 </body>
 </html>
