@@ -28,7 +28,7 @@ export default function StepsSection() {
         <div className="flex justify-between items-end mb-14">
           <Reveal>
             <h2 className="text-[40px] leading-[1.3] font-bold tracking-[-0.02em]">
-              요청부터 접수까지
+              요청부터 확인까지
               <br />네 단계
             </h2>
           </Reveal>
@@ -36,21 +36,35 @@ export default function StepsSection() {
         </div>
 
         <div ref={stairRef} className="relative h-[430px]">
+          {/*
+           * 계단 선은 clipPath 가로 너비 0→100% 로 왼쪽부터 공개한다.
+           * pathLength + non-scaling-stroke + preserveAspectRatio=none 조합은
+           * 마지막 가로 칸이 잘려서 안 그려지는 버그가 있었다 (이 방식으로 교체).
+           */}
           <svg
             viewBox="0 0 1000 430"
             preserveAspectRatio="none"
             className="absolute inset-0 w-full h-full"
           >
-            {/* 아래쪽부터 오른쪽 위로 올라가는 계단 선 */}
-            <motion.path
+            <defs>
+              <clipPath id="stair-reveal" clipPathUnits="userSpaceOnUse">
+                <motion.rect
+                  x={0}
+                  y={0}
+                  height={430}
+                  initial={{ width: 0 }}
+                  animate={play ? { width: 1000 } : { width: 0 }}
+                  transition={{ duration: 1.6, ease: [0.65, 0, 0.35, 1] }}
+                />
+              </clipPath>
+            </defs>
+            <path
               d="M0 428H245V324H500V220H755V116H1000"
               fill="none"
               stroke="#111"
               strokeWidth={2}
               vectorEffect="non-scaling-stroke"
-              initial={{ pathLength: 0 }}
-              animate={play ? { pathLength: 1 } : { pathLength: 0 }}
-              transition={{ duration: 1.6, ease: [0.65, 0, 0.35, 1] }}
+              clipPath="url(#stair-reveal)"
             />
           </svg>
           {STEPS.map((s, i) => (

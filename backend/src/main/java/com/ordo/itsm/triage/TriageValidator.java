@@ -50,6 +50,8 @@ public class TriageValidator {
     private static final Pattern HOUR_WORD = Pattern.compile(
             "(오전|오후|새벽|아침|저녁|밤|AM|PM|am|pm)?\\s*(\\d{1,2})\\s*시(?!간)");
     private static final Pattern NIGHT_WORDS = Pattern.compile("심야|새벽|야간|밤");
+    // 낮 표현 — 심야 표현과 함께 쓰이지 않으면 night_work 는 근거 없음으로 제거한다.
+    private static final Pattern DAY_WORDS = Pattern.compile("오전|오후|낮|아침|점심");
     // \b 는 테스트 환경에 따라 유니코드 모드가 켜지면 다르게 작동할 수 있어
     // 명시적 lookaround 로 "앞뒤가 숫자/점이 아닌" 경계를 지정한다.
     private static final Pattern IP_PATTERN = Pattern.compile("(?<![\\d.])\\d{1,3}(?:\\.\\d{1,3}){3}(?![\\d.])");
@@ -138,15 +140,21 @@ public class TriageValidator {
         }
 
         // night_work — 심야 단어 OR 확정 시각이 야간대일 때만 "근거 있음".
-        // 모호한 시각(1~11시 수식어 없음)은 그 자체로는 근거로 쓰지 않음 (추가/제거 모두 안 함).
+        // 심야 아님 확정: (a) 확정 시각이 야간대 밖, (b) 낮 표현만 있고 심야 표현 없음,
+        //                 (c) 시간 표현이 전혀 없는데 심야 표현도 없음 — AI 가 붙인 night_work 는 근거가 없으므로 제거.
         if (requestType == RequestType.CHANGE) {
             boolean nightWord = NIGHT_WORDS.matcher(text).find();
+            boolean dayWord = DAY_WORDS.matcher(text).find();
             Set<Integer> unambiguousHours = new LinkedHashSet<>();
             for (HourExpr e : hourExprs) {
                 if (!e.ambiguous()) unambiguousHours.addAll(e.candidates());
             }
             boolean confirmedNight = nightWord || unambiguousHours.stream().anyMatch(h -> h >= 22 || h < 6);
-            boolean confirmedNotNight = !confirmedNight && !unambiguousHours.isEmpty();
+            boolean confirmedNotNight = !confirmedNight && (
+                    !unambiguousHours.isEmpty()
+                    || (dayWord && !nightWord)
+                    || (hourExprs.isEmpty() && !nightWord)
+            );
             boolean hasNightFactor = factors.contains("night_work");
             if (confirmedNight && !hasNightFactor) {
                 factors.add("night_work");
@@ -155,7 +163,6 @@ public class TriageValidator {
                 factors.remove("night_work");
                 corrections.add("[FIX] riskFactor-night_work (근거 없음)");
             }
-            // 모호한 경우(unambiguousHours 비어있고 심야 단어 없음) → 추가/제거 모두 skip
         }
 
         // 4) rollback/test 동기화 (CHANGE 전체) :

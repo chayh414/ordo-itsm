@@ -644,6 +644,69 @@ class TriageValidatorTest {
         assertTrue(out.corrections().stream().anyMatch(c -> c.startsWith("[SUP] testPlan")));
     }
 
+    @Test
+    @DisplayName("T16: '내일 오후' 방화벽 포트 443 — 낮 표현만 있고 심야 표현 없음 → AI 가 붙인 night_work 제거")
+    void dayOnlyMention_removesAINightWork() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "FIREWALL", EnvironmentType.PRODUCTION,
+                null, Priority.P3, "NETWORK_SECURITY",
+                null, null, null,
+                List.of("rollbackPlan", "testPlan"),
+                List.of("firewall_change", "production_environment", "night_work"),
+                List.of(),
+                0.75);
+        String raw = "내일 오후에 운영 서버 방화벽 포트 443 개방해주세요.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertFalse(out.riskFactors().contains("night_work"),
+                "'오후' 는 낮 표현 → night_work 제거");
+        assertTrue(out.corrections().stream().anyMatch(c -> c.contains("[FIX] riskFactor-night_work")),
+                "FIX 로그 포함");
+        assertTrue(out.riskFactors().containsAll(List.of(
+                        "firewall_change", "production_environment",
+                        "rollback_plan_missing", "test_plan_missing")),
+                "요인은 방화벽+운영+롤백없음+테스트없음 (합계 10점)");
+    }
+
+    @Test
+    @DisplayName("T17: 시간 표현 자체 없음 — AI 가 붙인 night_work 는 원문 근거 없음으로 제거")
+    void noTimeMentionAtAll_removesAINightWork() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "FIREWALL", EnvironmentType.PRODUCTION,
+                null, Priority.P3, "NETWORK_SECURITY",
+                null, null, null,
+                List.of("rollbackPlan", "testPlan", "scheduledTime"),
+                List.of("firewall_change", "production_environment", "night_work"),
+                List.of(),
+                0.7);
+        String raw = "운영 서버 방화벽 포트 열어주세요.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertFalse(out.riskFactors().contains("night_work"),
+                "시간/낮/심야 표현 전혀 없음 → night_work 제거");
+    }
+
+    @Test
+    @DisplayName("T18: '오늘 밤' (시각 없음, '밤' 단어) — 심야 유지")
+    void nightWord_withoutHour_keepsNight() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "FIREWALL", EnvironmentType.PRODUCTION,
+                null, Priority.P2, "NETWORK_SECURITY",
+                null, null, null,
+                List.of("rollbackPlan"),
+                List.of("firewall_change", "production_environment", "night_work"),
+                List.of(new Evidence("night_work", "오늘 밤")),
+                0.8);
+        String raw = "오늘 밤 운영 방화벽 포트 열어주세요.";
+
+        TriageResult out = validator.validate(ai, raw);
+
+        assertTrue(out.riskFactors().contains("night_work"),
+                "'밤' 포함 → 심야 유지");
+    }
+
     // --- helpers ---
 
     private static TriageResult aiResult(RequestType type, String category, EnvironmentType env,

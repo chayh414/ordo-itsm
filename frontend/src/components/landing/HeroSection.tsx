@@ -27,7 +27,7 @@ export default function HeroSection() {
             transition={{ duration: 0.9, delay: 1.8, ease: [0.2, 0.7, 0.2, 1] }}
           >
             <p className="text-[22px] leading-[1.6] font-medium">
-              시스원 백오피스용
+              운영 요청 앞단의
               <br />
               사내 AI 어시스턴트입니다.
             </p>
