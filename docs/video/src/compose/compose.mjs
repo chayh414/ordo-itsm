@@ -28,6 +28,7 @@ const sources = {
   scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 }, // 조회+방법 질문
   scene07: { file: 'scene07.webm' },
   scene08: { file: 'scene08.webm', composed: true },
+  scene08b: { file: 'scene08b.webm', trimStart: 2, trimDur: 15 }, // 로그인→토스트→확인→상세 로드 구간만
   scene09: { file: 'scene09.webm', composed: true },
   scene10: { file: 'scene10.mp4' },
   scene11: { file: 'scene11.mp4' },
