@@ -36,7 +36,7 @@ export default function Header() {
           <a href="#security">보안</a>
           <Link
             to="/login"
-            className="inline-flex items-center h-10 px-[18px] bg-accent hover:bg-accent-hover transition-colors text-white text-[15px] font-semibold"
+            className="inline-flex items-center h-10 px-[18px] bg-ink hover:bg-[#333] transition-colors text-white text-[15px] font-semibold"
           >
             로그인
           </Link>
