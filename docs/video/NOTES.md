@@ -74,7 +74,55 @@
 - scene040506 녹화가 **전체 한 세션**이라 콘티에 명시된 "약 2초 응답 대기" 등 세부 리듬은 FFmpeg trim으로만 분리. 각 scene 안에서 음성 끝난 뒤 정적 영상 유지 구간이 생김 (BGM이 깔림).
 - 자막 하드서브 필터에서 Windows 경로 escape 문제로 1차 compose 실패 → `execSync({ cwd: outDir })` + 상대경로 `subtitles.srt` 로 재실행 성공.
 
-## 최종 결과 (v5)
+## 최종 결과 (v6 — 이야기 구조 재편)
+
+| 항목 | 값 |
+|---|---|
+| `output/ordo-demo-final.mp4` | **1920×1080 · H.264 · AAC · 4:21** |
+| SRT 치환어 검색 | 0건 |
+| 백업 태그 | **v5-backup** @ 7b0cc49 |
+
+## v6 수정 (이야기 구조 재편)
+
+### 구조
+```
+브랜드 파트 ~35s
+scene01 (오프닝) → scene02 (문제) → scene03 (Ordo 등장)
+scene_hero (김요청 상황, 18s) — NEW
+├ 시계 23:00 · 메신저 말풍선 · 김요청 이름 카드
+
+챕터 ① "말로 요청하다" (1.8s wipe) → scene04 요청서
+챕터 ② "빠진 정보를 채우다" (1.8s wipe) → scene05 보완/접수 + scene06 대화 조회
+챕터 ③ "운영팀에 도착하다" (1.8s wipe) → scene07 백오피스
+챕터 ④ "그날 밤, 장애가 터지다" (1.8s wipe) → scene08 3분할 + scene08b 상세
+챕터 ⑤ "AI가 넘지 않는 선" (1.8s wipe) → scene09 격리/인젝션
+
+요약 파트
+scene10 요약 → scene11 엔딩 10s
+```
+
+### 내레이션 (김요청 이야기 말투)
+기존 기능 나열 → 이야기 흐름 전환. 의미·숫자·사실 그대로.
+- scene04: "김요청 님은 늘 하던 대로 말했을 뿐인데, Ordo는 이걸 위험한 작업으로 알아봅니다…"
+- scene07: "김요청 님이 보낸 요청이, 운영팀 이운영 님에게는 이렇게 보입니다…"
+- scene08: "그때 A제조 ERP 장애가 들어옵니다…"
+- scene09: "Ordo는 승인하지 않고, 상태를 바꾸지 않습니다. 다른 회사의 요청은 조회할 수 없고, 민감정보는 보내기 전에 가립니다."
+
+### 효과 (추가)
+- **진행 표시 overlay** — 오른쪽 위 계단 5칸, 현재 챕터만 파랑 (#0164B2), 각 scene에 대응 PNG overlay
+  - `assets/overlay/progress-{1~5}.png`
+  - compose makeClip 에서 `progressIdxMap` 기반 자동 삽입
+- **챕터 와이프 전환** — chapter HTML 안의 `clip-path` 로 ink 색 계단 모양이 wipe 됨
+- **반투명 자막 띠** 유지 (v5)
+- **강조 박스 overlay 는 미구현** (좌표 복잡·시간 제약으로 포기)
+
+### 제거/변경
+- scene04b (민감정보 마스킹) — v5 에서 포기, v6 에서도 사용 안 함. 민감정보 언급은 scene09 자막에 통합
+- narration tts.mjs — 빈 tts 처리 추가 (챕터 카드는 음성 없음, timing 에만 기록)
+- compose makeClip — 음성 없는 scene 분기 추가 (lavfi anullsrc), progress overlay input 추가
+
+## v5 (이전 기록)
+
 
 | 항목 | 값 |
 |---|---|

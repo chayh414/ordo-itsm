@@ -30,7 +30,13 @@ await tts.setMetadata(spec.voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
 for (const s of spec.scenes) {
   const finalFile = resolve(voiceDir, `${s.id}.mp3`);
   if (existsSync(finalFile)) unlinkSync(finalFile);
-  const ttsText = s.tts || s.text; // 음성 생성용 (치환 표기)
+  const ttsText = (s.tts ?? s.text ?? '').trim();
+  if (!ttsText) {
+    // 음성 없는 scene (챕터 카드 등) — timing 에만 기록, 음성 안 생성
+    console.log(`[${s.id}] 음성 없음 (duration=${s.duration}s)`);
+    timing.scenes.push({ id: s.id, duration: s.duration, voiceDuration: 0, text: s.text || '' });
+    continue;
+  }
   console.log(`[${s.id}] 생성 중...`);
   const { audioFilePath } = await tts.toFile(voiceDir, ttsText, { rate: spec.rate });
   renameSync(audioFilePath, finalFile);

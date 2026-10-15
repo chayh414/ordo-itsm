@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Hero — 김요청 상황</title>
+<meta name="scene-duration" content="18" />
+<link rel="stylesheet" href="common.css" />
+<style>
+  html, body { background: var(--bg); }
+  .stage {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: center;
+    padding: 60px 100px;
+    gap: 40px;
+  }
+
+  /* 왼쪽: 큰 시계 */
+  .clock-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    opacity: 0;
+    animation: fadeIn 1.0s ease-out 0.4s forwards;
+  }
+  .clock {
+    font-size: 180px;
+    font-weight: 300;
+    letter-spacing: -0.05em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: var(--ink);
+  }
+  .clock-label {
+    font-size: 22px;
+    color: var(--mute);
+    letter-spacing: 0.02em;
+  }
+
+  /* 중앙: 메신저 말풍선 */
+  .msgs { position: relative; height: 700px; }
+  .msg {
+    position: absolute;
+    width: 440px;
+    padding: 20px 24px;
+    background: var(--soft);
+    border: 1px solid var(--soft);
+    opacity: 0;
+    transform: translateY(10px);
+    font-size: 18px;
+    letter-spacing: -0.01em;
+  }
+  .m1 { top: 20px;  left: 0;   animation: msgInOut 2.5s ease-out 2.0s forwards; }
+  .m2 { top: 160px; left: 40px;animation: msgInOut 2.5s ease-out 3.2s forwards; }
+  .m3 { top: 300px; left: 10px;animation: msgInOut 2.5s ease-out 4.4s forwards; }
+  .m4 { top: 440px; left: 60px;animation: msgInOut 2.5s ease-out 5.6s forwards; }
+  .m5 { top: 580px; left: 20px;animation: msgInOut 2.5s ease-out 6.8s forwards; }
+  @keyframes msgInOut {
+    0%   { opacity: 0; transform: translateY(10px); }
+    30%  { opacity: 1; transform: translateY(0); }
+    70%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+
+  /* 오른쪽: 김요청 이름 카드 */
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: fadeIn 1.2s ease-out 9s forwards;
+  }
+  .card .label {
+    font-size: 17px;
+    color: var(--mute);
+    letter-spacing: 0.02em;
+  }
+  .card .name {
+    font-size: 86px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--ink);
+  }
+  .card .meta {
+    font-size: 22px;
+    color: var(--mute);
+    margin-top: 10px;
+    letter-spacing: -0.01em;
+  }
+  .card .task {
+    margin-top: 24px;
+    padding: 18px 20px;
+    border-left: 2px solid var(--ink);
+    font-size: 20px;
+    line-height: 1.5;
+    color: var(--body);
+    opacity: 0;
+    animation: fadeIn 1.0s ease-out 11s forwards;
+  }
+
+  @keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="clock-wrap">
+      <div class="clock">23:00</div>
+      <div class="clock-label">오늘 밤</div>
+    </div>
+
+    <div class="msgs">
+      <div class="msg m1">오늘 밤 작업 가능한가요?</div>
+      <div class="msg m2">백업은 해두셨나요?</div>
+      <div class="msg m3">롤백 계획 공유 부탁드려요</div>
+      <div class="msg m4">작업 시작 알려주세요</div>
+      <div class="msg m5">끝나면 알려주세요</div>
+    </div>
+
+    <div class="card">
+      <div class="label">요청자</div>
+      <div class="name">김요청</div>
+      <div class="meta">A제조 · 정보시스템팀</div>
+      <div class="task">주문 시스템 DB 컬럼 추가 · 테스트 완료 · 롤백 계획 아직</div>
+    </div>
+  </div>
+</body>
+</html>

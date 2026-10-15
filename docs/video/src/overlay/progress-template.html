@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Progress</title>
+<link rel="stylesheet" href="../motion/common.css" />
+<style>
+  html, body {
+    width: 300px;
+    height: 100px;
+    background: transparent !important;
+    margin: 0;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  .wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 100%;
+  }
+  .step {
+    width: 44px;
+    background: var(--line);
+    border-radius: 0;
+  }
+  .step.active { background: var(--accent); }
+  /* 계단 모양: 뒤로 갈수록 높게 */
+  .step:nth-child(1) { height: 20%; }
+  .step:nth-child(2) { height: 36%; }
+  .step:nth-child(3) { height: 52%; }
+  .step:nth-child(4) { height: 68%; }
+  .step:nth-child(5) { height: 84%; }
+  .label {
+    position: fixed;
+    top: 16px;
+    left: 240px;
+    font-size: 13px;
+    color: var(--mute);
+    font-feature-settings: 'tnum';
+  }
+</style>
+</head>
+<body>
+  <div class="wrap" id="wrap">
+    <div class="step"></div>
+    <div class="step"></div>
+    <div class="step"></div>
+    <div class="step"></div>
+    <div class="step"></div>
+  </div>
+  <div class="label" id="label">0/5</div>
+  <script>
+    const idx = Number(new URLSearchParams(location.search).get('i') || 1);
+    document.querySelectorAll('.step')[idx - 1].classList.add('active');
+    document.getElementById('label').textContent = idx + '/5';
+  </script>
+</body>
+</html>

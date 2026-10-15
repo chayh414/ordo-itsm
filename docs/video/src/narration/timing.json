@@ -21,56 +21,92 @@
       "text": "Ordo는 운영 요청 앞단의 사내 AI 어시스턴트입니다. AI는 추출, 규칙은 판정, 사람은 결정."
     },
     {
+      "id": "scene_hero",
+      "duration": 18,
+      "voiceDuration": 18.6,
+      "text": "A제조 정보시스템팀 김요청 님. 오늘 밤 11시, 주문 시스템 DB에 컬럼을 추가해야 합니다. 테스트는 끝났지만 롤백 계획은 아직입니다. 예전 같으면 메신저로 몇 번이고 다시 연락을 주고받았겠죠. 이번엔, Ordo에게 말해봅니다."
+    },
+    {
+      "id": "chapter1",
+      "duration": 1.8,
+      "voiceDuration": 0,
+      "text": ""
+    },
+    {
       "id": "scene04",
-      "duration": 15,
-      "voiceDuration": 11.688,
-      "text": "김요청 님이 평소처럼 말하면, Ordo가 요청서 초안을 만듭니다. 위험 요인마다 원문 근거가 함께 표시되고, 점수는 AI가 아니라 규칙이 계산합니다."
+      "duration": 20,
+      "voiceDuration": 16.968,
+      "text": "김요청 님은 늘 하던 대로 말했을 뿐인데, Ordo는 이걸 위험한 작업으로 알아봅니다. 운영 환경, DB 스키마 변경, 롤백 없음, 심야 작업. 위험 요인마다 원문이 근거로 붙고, 점수는 AI가 아니라 규칙이 계산합니다."
+    },
+    {
+      "id": "chapter2",
+      "duration": 1.8,
+      "voiceDuration": 0,
+      "text": ""
     },
     {
       "id": "scene05",
-      "duration": 28,
-      "voiceDuration": 13.584,
-      "text": "빠진 정보는 접수 전에 묻습니다. 롤백 절차를 보완하면 9점에서 7점으로 내려갑니다. 접수는 사람이 버튼을 눌러야 합니다. 이때부터 SLA가 시작됩니다."
+      "duration": 25,
+      "voiceDuration": 11.016,
+      "text": "묻는 질문에 답하면 다시 분석해서 9점에서 7점으로 내려갑니다. 접수는 사람이 버튼을 눌러야 이루어지고, 그 순간부터 SLA가 시작됩니다."
     },
     {
       "id": "scene06",
-      "duration": 16,
-      "voiceDuration": 6.144,
-      "text": "처리 현황은 대화로 확인합니다. 방법을 묻는 질문에는 설명만 합니다."
+      "duration": 15,
+      "voiceDuration": 6.36,
+      "text": "현황은 대화로 확인합니다. 방법만 묻는 질문에는 설명만 돌려줍니다."
+    },
+    {
+      "id": "chapter3",
+      "duration": 1.8,
+      "voiceDuration": 0,
+      "text": ""
     },
     {
       "id": "scene07",
-      "duration": 45,
-      "voiceDuration": 16.488,
-      "text": "운영 담당자는 맡은 고객사의 요청만 봅니다. 백오피스에는 AI가 뽑은 것, 규칙이 바로잡은 것, 점수가 11에서 9, 9에서 7로 바뀐 이력이 남습니다. 모든 단계는 수정할 수 없는 감사 로그에 기록됩니다."
+      "duration": 40,
+      "voiceDuration": 17.064,
+      "text": "김요청 님이 보낸 요청이, 운영팀 이운영 님에게는 이렇게 보입니다. AI가 뽑은 것, 규칙이 바로잡은 것, 점수가 11에서 9, 9에서 7로 바뀐 이력이 그대로 남습니다. 모든 단계는 수정할 수 없는 감사 로그에 기록됩니다."
+    },
+    {
+      "id": "chapter4",
+      "duration": 1.8,
+      "voiceDuration": 0,
+      "text": ""
     },
     {
       "id": "scene08",
-      "duration": 35,
-      "voiceDuration": 17.568,
-      "text": "A제조 ERP 장애가 들어오면 담당자와 같은 회사 사용자에게 알림이 뜹니다. B은행 화면에는 나타나지 않습니다. 접수한 작업도 마감이 다가오면 먼저 알려줍니다. 실제 운영에서는 모니터링 시스템의 이벤트가 들어옵니다."
+      "duration": 32,
+      "voiceDuration": 15.12,
+      "text": "그때 A제조 ERP 장애가 들어옵니다. 담당자와 같은 회사 사용자에게 바로 알림이 뜨지만, B은행 화면에는 나타나지 않습니다. 아까 접수한 주문 테이블 작업도, 마감이 다가오자 먼저 알려줍니다."
     },
     {
       "id": "scene08b",
       "duration": 16,
-      "voiceDuration": 6.816,
-      "text": "토스트의 '확인'을 누르면 장애 상세로 바로 이동해 요청 정보와 SLA 마감을 확인합니다."
+      "voiceDuration": 6.672,
+      "text": "토스트의 '확인'을 누르면, 장애 상세로 바로 이동해 요청 정보와 SLA 마감을 확인합니다."
+    },
+    {
+      "id": "chapter5",
+      "duration": 1.8,
+      "voiceDuration": 0,
+      "text": ""
     },
     {
       "id": "scene09",
-      "duration": 22,
-      "voiceDuration": 7.536,
-      "text": "AI는 승인하지 않고, 상태를 바꾸지 않습니다. 다른 회사의 요청은 조회할 수 없습니다."
+      "duration": 20,
+      "voiceDuration": 9.6,
+      "text": "Ordo는 승인하지 않고, 상태를 바꾸지 않습니다. 다른 회사의 요청은 조회할 수 없고, 민감정보는 보내기 전에 가립니다."
     },
     {
       "id": "scene10",
-      "duration": 22,
-      "voiceDuration": 9.672,
-      "text": "사내 서버의 로컬 AI만 사용합니다. 요청 내용은 외부로 나가지 않고, 서버 주소만 바꿔 다른 추론 서버로 옮길 수 있습니다."
+      "duration": 20,
+      "voiceDuration": 9.816,
+      "text": "AI는 추출, 규칙은 판정, 사람은 결정. 사내 서버의 로컬 AI만 사용해, 요청 내용은 외부로 나가지 않습니다."
     },
     {
       "id": "scene11",
-      "duration": 15,
+      "duration": 10,
       "voiceDuration": 4.44,
       "text": "말하면 정리되고, 결정은 사람이. Ordo."
     }

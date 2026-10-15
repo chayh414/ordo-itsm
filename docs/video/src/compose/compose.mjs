@@ -23,12 +23,18 @@ const sources = {
   scene01: { file: 'scene01.mp4' },
   scene02: { file: 'scene02.mp4' },
   scene03: { file: 'scene03.mp4' },
-  scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 24 }, // 특수 처리 (segment-based cut, A/B/C)
-  scene05: { file: 'scene040506.webm', trimStart: 24,   trimDur: 13 }, // supplement~접수
-  scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 }, // 조회+방법 질문
+  scene_hero: { file: 'scene_hero.mp4' },
+  chapter1: { file: 'chapter1.mp4' },
+  scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 24 },
+  chapter2: { file: 'chapter2.mp4' },
+  scene05: { file: 'scene040506.webm', trimStart: 24,   trimDur: 13 },
+  scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 },
+  chapter3: { file: 'chapter3.mp4' },
   scene07: { file: 'scene07.webm' },
+  chapter4: { file: 'chapter4.mp4' },
   scene08: { file: 'scene08.webm', composed: true },
-  scene08b: { file: 'scene08b.webm', trimStart: 2, trimDur: 15 }, // 로그인→토스트→확인→상세 로드 구간만
+  scene08b: { file: 'scene08b.webm', trimStart: 2, trimDur: 15 },
+  chapter5: { file: 'chapter5.mp4' },
   scene09: { file: 'scene09.webm', composed: true },
   scene10: { file: 'scene10.mp4' },
   scene11: { file: 'scene11.mp4' },
@@ -106,13 +112,23 @@ function composeScene09() {
   return true;
 }
 
+// 챕터별 진행 표시 (계단 5칸)
+const progressIdxMap = {
+  chapter1: 1, scene04: 1,
+  chapter2: 2, scene05: 2, scene06: 2,
+  chapter3: 3, scene07: 3,
+  chapter4: 4, scene08: 4, scene08b: 4,
+  chapter5: 5, scene09: 5,
+};
+
 // 각 scene mp4 clip 생성 — 영상 길이 = max(음성 길이 + 0.8s, scene.duration)
 // 영상 길이가 target과 다르면 setpts 로 조정 (freeze 금지, 미세 slow/fast)
 function makeClip(s) {
   const src = sources[s.id];
   const voice = resolve(voiceDir, `${s.id}.mp3`);
-  const voiceLen = s.voiceDuration;
-  const target = Math.max(voiceLen + 0.8, s.duration);
+  const voiceExists = existsSync(voice);
+  const voiceLen = voiceExists ? (s.voiceDuration || 0) : 0;
+  const target = voiceExists ? Math.max(voiceLen + 0.8, s.duration) : s.duration;
   const outFile = resolve(clipDir, `${s.id}.mp4`);
 
   const inFile = resolve(recDir, src.file);
@@ -138,8 +154,9 @@ function makeClip(s) {
   const ptsScale = target / srcLen;
 
   // 영상 필터
-  // 녹화 clip(모션 아닌 것)에는 미세 zoompan 적용 → freeze 방지
-  const isRecorded = !s.id.match(/^scene(0[123]|1[01])$/) || s.id === 'scene04b';
+  // 녹화 clip(모션 아닌 것) 분류 — scene_hero, chapter N 은 모션으로 간주
+  const motionIds = /^(scene(0[123]|1[01])|scene_hero|chapter[1-5])$/;
+  const isRecorded = !motionIds.test(s.id);
   // 녹화는 1680 pad, 모션(이미 1920×1080)은 그대로. zoomTail 이 crop 하므로 pad 영역이 좀 커도 상관없음
   const commonTail = `scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30`;
   // 전역 sine pan 제거 — 사용자 피드백 (영상 전체 흔들림 금지, 가장자리 잘림 없음)
@@ -171,22 +188,47 @@ function makeClip(s) {
       `scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30${zoomTail}[v]`;
   }
 
-  // 음성 길이가 target 보다 짧으면 뒤에 침묵 pad
-  const aFilter = `[1:a]apad=pad_dur=${(target - voiceLen).toFixed(2)}[a]`;
+  // 챕터 진행 표시 overlay
+  const progressIdx = progressIdxMap[s.id];
+  const progressPng = progressIdx
+    ? resolve(videoRoot, 'assets', 'overlay', `progress-${progressIdx}.png`)
+    : null;
+  const overlayStage = progressPng
+    ? `;[v][${voiceExists ? 2 : 2}:v]overlay=W-w-32:28:format=auto[vout]`
+    : '';
+  const vMap = progressPng ? '[vout]' : '[v]';
 
-  const cmd = [
-    'ffmpeg', '-y',
-    '-i', `"${inFile}"`,
-    '-i', `"${voice}"`,
-    '-filter_complex', `"${vFilter};${aFilter}"`,
-    '-map', '"[v]"',
-    '-map', '"[a]"',
-    '-t', target.toFixed(2),
-    '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '192k',
-    `"${outFile}"`,
-  ].join(' ');
-  sh(cmd, `${s.id} clip (voice=${voiceLen.toFixed(2)}s · target=${target.toFixed(2)}s · pts×${ptsScale.toFixed(3)})`);
+  if (voiceExists) {
+    const aFilter = `[1:a]apad=pad_dur=${(target - voiceLen).toFixed(2)}[a]`;
+    const inputs = ['-i', `"${inFile}"`, '-i', `"${voice}"`];
+    if (progressPng) inputs.push('-i', `"${progressPng}"`);
+    const cmd = [
+      'ffmpeg', '-y',
+      ...inputs,
+      '-filter_complex', `"${vFilter};${aFilter}${overlayStage}"`,
+      '-map', `"${vMap}"`, '-map', '"[a]"',
+      '-t', target.toFixed(2),
+      '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k',
+      `"${outFile}"`,
+    ].join(' ');
+    sh(cmd, `${s.id} clip (voice=${voiceLen.toFixed(2)}s · target=${target.toFixed(2)}s · pts×${ptsScale.toFixed(3)}${progressIdx ? ` · prog ${progressIdx}` : ''})`);
+  } else {
+    // 챕터 카드 등 음성 없는 scene — 영상만, 무음 트랙 추가
+    const inputs = ['-i', `"${inFile}"`, '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000'];
+    if (progressPng) inputs.push('-i', `"${progressPng}"`);
+    const cmd = [
+      'ffmpeg', '-y',
+      ...inputs,
+      '-filter_complex', `"${vFilter}${overlayStage}"`,
+      '-map', `"${vMap}"`, '-map', '1:a',
+      '-t', target.toFixed(2),
+      '-c:v', 'libx264', '-crf', '20', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k',
+      `"${outFile}"`,
+    ].join(' ');
+    sh(cmd, `${s.id} clip (voice=없음 · target=${target.toFixed(2)}s · pts×${ptsScale.toFixed(3)}${progressIdx ? ` · prog ${progressIdx}` : ''})`);
+  }
   return outFile;
 }
 
