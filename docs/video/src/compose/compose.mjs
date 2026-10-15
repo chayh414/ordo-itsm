@@ -24,7 +24,6 @@ const sources = {
   scene02: { file: 'scene02.mp4' },
   scene03: { file: 'scene03.mp4' },
   scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 24 }, // 특수 처리 (segment-based cut, A/B/C)
-  scene04b: { file: 'scene04b.webm' },                                 // 민감정보 마스킹 신규 녹화
   scene05: { file: 'scene040506.webm', trimStart: 24,   trimDur: 13 }, // supplement~접수
   scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 }, // 조회+방법 질문
   scene07: { file: 'scene07.webm' },
@@ -142,11 +141,9 @@ function makeClip(s) {
   const isRecorded = !s.id.match(/^scene(0[123]|1[01])$/) || s.id === 'scene04b';
   // 녹화는 1680 pad, 모션(이미 1920×1080)은 그대로. zoomTail 이 crop 하므로 pad 영역이 좀 커도 상관없음
   const commonTail = `scale=1680:-2:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:white,setsar=1,fps=30`;
-  // zoompan 강화: 각 clip 안에서 지속적인 미세 pan + zoom bounce 로 freeze 완전 제거
-  // 't' 는 output time 변수. sin() 로 pan, zoom 은 계속 변화
-  const zoomTail = isRecorded
-    ? `,scale=2048:1152:force_original_aspect_ratio=increase,crop=1920:1080:x='(iw-1920)/2+32*sin(t/2)':y='(ih-1080)/2+20*cos(t/2.6)'`
-    : '';
+  // 전역 sine pan 제거 — 사용자 피드백 (영상 전체 흔들림 금지, 가장자리 잘림 없음)
+  // 4~5초 정지는 OK. 핵심 순간 의도적 줌만 scene04 segment-based 처리에서 유지.
+  const zoomTail = '';
 
   let vFilter;
   if (s.id === 'scene04') {

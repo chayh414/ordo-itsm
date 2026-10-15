@@ -74,7 +74,30 @@
 - scene040506 녹화가 **전체 한 세션**이라 콘티에 명시된 "약 2초 응답 대기" 등 세부 리듬은 FFmpeg trim으로만 분리. 각 scene 안에서 음성 끝난 뒤 정적 영상 유지 구간이 생김 (BGM이 깔림).
 - 자막 하드서브 필터에서 Windows 경로 escape 문제로 1차 compose 실패 → `execSync({ cwd: outDir })` + 상대경로 `subtitles.srt` 로 재실행 성공.
 
-## 최종 결과 (v3)
+## 최종 결과 (v4)
+
+| 항목 | 값 |
+|---|---|
+| `output/ordo-demo-final.mp4` | **1920×1080 · H.264 · AAC · 4:08 · 7.5 MB** |
+| `output/preview.mp4` | 1280×720 · 4:08 |
+
+## v4 수정 (사용자 피드백)
+
+### 1. 전역 sine-wave crop pan 제거
+- 영상 전체 흔들림·가장자리 잘림 해소
+- `zoomTail = ''` 로 비움. 핵심 순간의 의도적 줌(scene04 segment-based A/B/C)만 유지
+- 설명 중 4~5초 정지 허용
+
+### 2. SCENE 04b 제거
+- 녹화 scene04b.webm 결과 분석: 녹화 종료 시점(8.7s)에서 **AI 응답 생성 전 "작성 중" 상태**였음. [MASKED] 노출 못 함
+- 원인: Playwright response_shown pattern이 사용자 메시지의 "비밀번호"에 즉시 매칭되어 조기 종료
+- 사용자 지시대로 **scene04b 제거**
+- 엔딩 scene11 duration 15s → 30s로 늘려 전체 길이 보전
+- 결과: **4:08** (4:00 이상 유지)
+
+## 이전 메모 (v3)
+
+
 
 | 항목 | 값 |
 |---|---|
