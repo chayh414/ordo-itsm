@@ -142,6 +142,11 @@ public class TriageValidator {
         // night_work — 심야 단어 OR 확정 시각이 야간대일 때만 "근거 있음".
         // 심야 아님 확정: (a) 확정 시각이 야간대 밖, (b) 낮 표현만 있고 심야 표현 없음,
         //                 (c) 시간 표현이 전혀 없는데 심야 표현도 없음 — AI 가 붙인 night_work 는 근거가 없으므로 제거.
+        //
+        // 보완(supplements)된 scheduledTime 은 원문 밖이라 hourExprs 에 들어오지 않으므로
+        // "원문 오후" + "보완 23:00" 조합이면 보완 쪽이 최신·명시적 의도이므로 우선한다:
+        //   - 보완 시각이 야간대 → night_work 확정 추가
+        //   - 보완 시각이 낮시간대 → "낮 표현" 과 동일하게 취급해 night_work 제거
         if (requestType == RequestType.CHANGE) {
             boolean nightWord = NIGHT_WORDS.matcher(text).find();
             boolean dayWord = DAY_WORDS.matcher(text).find();
@@ -149,9 +154,15 @@ public class TriageValidator {
             for (HourExpr e : hourExprs) {
                 if (!e.ambiguous()) unambiguousHours.addAll(e.candidates());
             }
-            boolean confirmedNight = nightWord || unambiguousHours.stream().anyMatch(h -> h >= 22 || h < 6);
+            Integer scheduledHour = extractScheduledHour(supplements);
+            boolean scheduledNight = scheduledHour != null && (scheduledHour >= 22 || scheduledHour < 6);
+            boolean scheduledDay = scheduledHour != null && !scheduledNight;
+            boolean confirmedNight = nightWord
+                    || unambiguousHours.stream().anyMatch(h -> h >= 22 || h < 6)
+                    || scheduledNight;
             boolean confirmedNotNight = !confirmedNight && (
-                    !unambiguousHours.isEmpty()
+                    scheduledDay
+                    || !unambiguousHours.isEmpty()
                     || (dayWord && !nightWord)
                     || (hourExprs.isEmpty() && !nightWord)
             );
@@ -445,6 +456,23 @@ public class TriageValidator {
         if (supplements == null) return false;
         String v = supplements.get(field);
         return v != null && !v.isBlank();
+    }
+
+    /**
+     * 보완된 scheduledTime 문자열에서 시(hour)를 뽑는다.
+     * - "2026-10-16 23:00" / "23:00" / "밤 11시" / "오후 11시" 등을 지원.
+     * - 모호(수식어 없는 1~11시)하면 null — 야간 판정에 쓰지 않는다.
+     */
+    private static Integer extractScheduledHour(Map<String, String> supplements) {
+        if (supplements == null) return null;
+        String v = supplements.get("scheduledTime");
+        if (v == null || v.isBlank()) return null;
+        for (HourExpr e : extractHourExprs(v)) {
+            if (!e.ambiguous() && !e.candidates().isEmpty()) {
+                return e.candidates().iterator().next();
+            }
+        }
+        return null;
     }
 
     private static List<String> requiredFieldsFor(RequestType type, String category) {

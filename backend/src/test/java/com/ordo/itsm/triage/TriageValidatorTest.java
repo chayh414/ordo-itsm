@@ -707,6 +707,50 @@ class TriageValidatorTest {
                 "'밤' 포함 → 심야 유지");
     }
 
+    @Test
+    @DisplayName("T19: 원문 '내일 오후' + 보완 scheduledTime=23:00 → 보완이 야간대이므로 night_work 추가")
+    void supplementScheduledTime_night_addsNightWork() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "FIREWALL", EnvironmentType.PRODUCTION,
+                null, Priority.P2, "NETWORK_SECURITY",
+                null, null, null,
+                List.of("rollbackPlan", "testPlan"),
+                List.of("firewall_change", "production_environment"),
+                List.of(),
+                0.8);
+        String raw = "내일 오후에 운영 서버 방화벽 포트 443 개방해주세요.";
+
+        TriageResult out = validator.validate(ai, raw,
+                Map.of("scheduledTime", "2026-10-16 23:00",
+                        "testPlan", "스테이징에서 연결 테스트 완료",
+                        "rollbackPlan", "작업 전 설정 백업 후 즉시 삭제"));
+
+        assertTrue(out.riskFactors().contains("night_work"),
+                "보완 scheduledTime 이 야간대(23시) → night_work 추가. 실제: " + out.riskFactors());
+    }
+
+    @Test
+    @DisplayName("T20: 원문 '내일 오후' + 보완 scheduledTime=14:00 → 보완이 낮시간대, night_work 추가 안 함")
+    void supplementScheduledTime_day_keepsNoNightWork() {
+        TriageResult ai = aiResult(
+                RequestType.CHANGE, "FIREWALL", EnvironmentType.PRODUCTION,
+                null, Priority.P2, "NETWORK_SECURITY",
+                null, null, null,
+                List.of("rollbackPlan", "testPlan"),
+                List.of("firewall_change", "production_environment"),
+                List.of(),
+                0.8);
+        String raw = "내일 오후에 운영 서버 방화벽 포트 443 개방해주세요.";
+
+        TriageResult out = validator.validate(ai, raw,
+                Map.of("scheduledTime", "2026-10-16 14:00",
+                        "testPlan", "스테이징에서 연결 테스트 완료",
+                        "rollbackPlan", "작업 전 설정 백업 후 즉시 삭제"));
+
+        assertFalse(out.riskFactors().contains("night_work"),
+                "보완 scheduledTime 이 낮시간대(14시) → night_work 없음. 실제: " + out.riskFactors());
+    }
+
     // --- helpers ---
 
     private static TriageResult aiResult(RequestType type, String category, EnvironmentType env,

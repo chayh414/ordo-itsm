@@ -7,6 +7,7 @@ import ToastContainer from '../components/app/ToastContainer'
 import { useAuth } from '../lib/auth'
 import { api, ApiError } from '../lib/api'
 import { usePageTitle } from '../lib/usePageTitle'
+import { label } from '../lib/i18n'
 import type {
   AssistantCard,
   AssistantCardCreate,
@@ -181,7 +182,7 @@ export default function AssistantPage() {
         ...prev,
         {
           role: 'assistant',
-          content: `요청 ${detail.ticketNo} 를 접수했습니다. 현재 상태는 "${detail.status}" 입니다.`,
+          content: `요청 ${detail.ticketNo} 를 접수했습니다. 현재 상태는 "${label.status(detail.status)}" 입니다.`,
         },
       ])
     } catch (err) {
@@ -359,6 +360,8 @@ export default function AssistantPage() {
           supplementedAnswers={supplementedAnswers}
           prevRisk={prevRisk}
           isProviderSide={isProviderSide}
+          onSendChat={(text) => void sendMessage(text)}
+          onNewRequest={onCancel}
         />
       </main>
     </div>

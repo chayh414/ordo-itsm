@@ -21,6 +21,10 @@ interface Props {
   supplementedAnswers: Record<string, string>
   prevRisk: { grade: RiskGrade | null; score: number | null } | null
   isProviderSide: boolean
+  /** 접수 완료 화면의 [내 요청 보기] */
+  onSendChat?: (text: string) => void
+  /** 접수 완료 화면의 [새 요청 작성] */
+  onNewRequest?: () => void
 }
 
 export default function DocPanel({
@@ -35,6 +39,8 @@ export default function DocPanel({
   supplementedAnswers,
   prevRisk,
   isProviderSide,
+  onSendChat,
+  onNewRequest,
 }: Props) {
   if (!card) return <EmptyDoc />
 
@@ -52,6 +58,8 @@ export default function DocPanel({
           supplementingField={supplementingField}
           supplementedAnswers={supplementedAnswers}
           prevRisk={prevRisk}
+          onSendChat={onSendChat}
+          onNewRequest={onNewRequest}
         />
       )
     case 'list_my_requests':

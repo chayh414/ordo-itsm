@@ -3,20 +3,14 @@ import type { AssistantCardCreate, RiskGrade } from '../../../lib/types'
 import { formatCorrection, formatRequestedTime, label } from '../../../lib/i18n'
 
 /*
- * create_request 결과 요청서 (디자인 가이드 v3 + 사용자 재배치 요구).
+ * create_request 결과 요청서 (v4 — 2열 사이드바 · 번호화된 보완 질문 · 접수 완료 화면).
  *
- * 섹션 순서 (알아야 할 것 → 해야 할 것 → 근거):
- *   ① 상단 메타 (상태 · 요청번호)
- *   ② 제목
- *   ③ 핵심 요약 한 줄 — "승인이 필요한 변경 · 위험도 매우 높음 (9점)" (HIGH 이상 risk 색)
- *   ④ 보완 질문 ("접수 전에 N가지 확인이 필요합니다" + 질문·입력창)
- *   ⑤ 위험 요인 (점수 높은 순)
- *   ⑥ 요청 정보 표
- *   ⑦ 자동 보정 (접힘 기본)
- *   ⑧ 하단 안내 + 취소 · 접수하기
+ * xl(1280px+) 레이아웃:
+ *   왼쪽: 제목 · 보완 질문 · 요청 정보 · 자동 보정
+ *   오른쪽 sticky 사이드바: 위험도 · 위험 요인(합계 = 점수) · 보완 진행 · [접수][취소] · 안내문
  *
- * 글자 크기: 본문 1.0625rem, 라벨 0.9375rem, 메타 0.875rem. 0.875rem 미만·#6F6F6F 보다 옅은 회색 금지.
- * 콘텐츠 최대 폭 57.5rem.
+ * xl 미만: 1열. 위험 요인·접수 버튼은 하단에.
+ * 접수 후: 오른쪽 패널을 "접수 완료" 로 전환.
  */
 
 interface Props {
@@ -30,6 +24,10 @@ interface Props {
   supplementingField: string | null
   supplementedAnswers: Record<string, string>
   prevRisk: { grade: RiskGrade | null; score: number | null } | null
+  /** 접수 완료 화면의 [내 요청 보기] — 대화창에 "내 요청 보여줘" 전송 */
+  onSendChat?: (text: string) => void
+  /** 접수 완료 화면의 [새 요청 작성] — 패널·대화창 초기화 */
+  onNewRequest?: () => void
 }
 
 export default function CreateDoc({
@@ -43,209 +41,485 @@ export default function CreateDoc({
   supplementingField,
   supplementedAnswers,
   prevRisk,
+  onSendChat,
+  onNewRequest,
 }: Props) {
   const { ticket, triage } = card
   const result = triage.result
-  const headerText = label.docHeader(ticket.status)
+  const category = result?.category ?? null
 
-  // 위험 요인 (점수 높은 순 정렬)
+  // 위험 요인 — factorPoints 기준으로 그려 "목록 합계 = 헤더 점수" 항상 성립
   type RiskRow = { factor: string; quote: string | null; points: number }
-  const factorPoints = triage.factorPoints ?? null
-  const riskRows: RiskRow[] = (result?.riskFactors ?? [])
-    .map((f) => {
-      const ev = result?.evidence?.find((e) => e.factor === f)
-      return { factor: f, quote: ev?.quote ?? null, points: factorPoints?.[f] ?? 0 }
-    })
+  const factorPoints = triage.factorPoints ?? {}
+  const quoteByFactor = new Map<string, string>()
+  for (const e of result?.evidence ?? []) {
+    if (e.quote) quoteByFactor.set(e.factor, e.quote)
+  }
+  const riskRows: RiskRow[] = Object.entries(factorPoints)
+    .map(([factor, points]) => ({
+      factor,
+      points: typeof points === 'number' ? points : 0,
+      quote: quoteByFactor.get(factor) ?? null,
+    }))
     .sort((a, b) => b.points - a.points)
+  const riskSum = riskRows.reduce((a, b) => a + b.points, 0)
 
   const grade = triage.riskGrade
   const score = triage.riskScore
-  const isHighRisk = grade === 'HIGH' || grade === 'CRITICAL'
-  const changed = prevRisk && (prevRisk.grade !== grade || prevRisk.score !== score)
 
-  // 질문 ↔ 필드 매칭. missingFields 와 clarifyingQuestions 는 같은 순서 (TriageValidator).
-  const questions: Array<{ field: string; question: string }> = (result?.missingFields ?? []).map((field, i) => ({
-    field,
-    question: result?.clarifyingQuestions?.[i] ?? label.field(field),
-  }))
-  const remaining = questions.filter((q) => !supplementedAnswers[q.field]).length
+  // 보완 질문 — missingFields·clarifyingQuestions 는 같은 순서 (TriageValidator)
+  const openQuestions = (result?.missingFields ?? [])
+    .filter((f) => !supplementedAnswers[f])
+    .map((field, i) => ({
+      field,
+      question: result?.clarifyingQuestions?.[i] ?? label.field(field),
+    }))
+  const totalQ = openQuestions.length + Object.keys(supplementedAnswers).length
+  const completedQ = Object.keys(supplementedAnswers).length
+  const allDone = openQuestions.length === 0 && totalQ > 0
+  const supplementHeaderText =
+    totalQ === 0
+      ? '확인이 필요한 내용이 없습니다'
+      : allDone
+        ? `접수 전 확인 필요 · 전체 완료 (${completedQ} / ${totalQ})`
+        : `접수 전 확인 필요 · ${completedQ} / ${totalQ}`
+
+  // 접수 후 화면
+  if (submitted) {
+    return (
+      <SubmittedState
+        ticket={ticket}
+        statusLabel={label.status(ticket.status)}
+        score={score}
+        grade={grade}
+        openQuestions={openQuestions}
+        onSendChat={onSendChat}
+        onNewRequest={onNewRequest}
+      />
+    )
+  }
+
+  const header = (
+    <>
+      <div className="flex justify-between items-baseline">
+        <span className="text-[0.875rem] text-mute">{label.docHeader(ticket.status)}</span>
+        <span className="text-[0.875rem] text-mute">
+          <b className="text-ink font-semibold">{ticket.ticketNo}</b>
+        </span>
+      </div>
+      <h1 className="text-[2.125rem] leading-[1.3] font-bold tracking-[-0.015em] mt-4 mb-7">
+        {documentTitle(result?.title, result?.category, result?.affectedService)}
+      </h1>
+    </>
+  )
+
+  const supplementsBlock = (totalQ > 0) && (
+    <section className="mt-2">
+      <h3 className="text-[0.9375rem] font-semibold mb-4">{supplementHeaderText}</h3>
+      <div className="divide-y divide-line border-t border-b border-line">
+        {Object.entries(supplementedAnswers).map(([f, a], idx) => (
+          <AnsweredRow
+            key={f}
+            number={rowNumber(idx)}
+            field={f}
+            answer={a}
+          />
+        ))}
+        {openQuestions.map((q, i) => (
+          <OpenRow
+            key={q.field}
+            number={rowNumber(completedQ + i)}
+            field={q.field}
+            question={q.question}
+            category={category}
+            busy={supplementingField === q.field}
+            disabled={supplementingField !== null}
+            onSave={(ans) => onSupplement(q.field, ans)}
+          />
+        ))}
+      </div>
+    </section>
+  )
+
+  const requestInfoBlock = (
+    <section className="mt-10">
+      <h3 className="text-[0.9375rem] font-semibold mb-3">요청 정보</h3>
+      <div className="grid grid-cols-2 gap-x-14">
+        <div>
+          <Kv k="요청 유형" v={label.requestType(result?.requestType)} />
+          <Kv k="분류" v={label.category(result?.category)} />
+          <Kv k="환경" v={label.environment(result?.environment)} />
+        </div>
+        <div>
+          <Kv k="대상 서비스" v={result?.affectedService ?? '—'} />
+          <Kv k="작업 예정" v={formatRequestedTime(result?.requestedTime)} />
+          <Kv k="요청자" v={requesterName} />
+        </div>
+      </div>
+    </section>
+  )
+
+  const correctionsBlock = result?.corrections && result.corrections.length > 0
+    ? <CollapsibleCorrections corrections={result.corrections} />
+    : null
 
   return (
     <article className="h-full overflow-y-auto">
-      <div className="max-w-[57.5rem] px-16 pt-9 pb-0 min-h-full flex flex-col">
-        {/* ① 상단 메타 */}
-        <div className="flex justify-between items-baseline">
-          <span className="text-[0.875rem] text-mute">{headerText}</span>
-          <span className="text-[0.875rem] text-mute">
-            <b className="text-ink font-semibold">{ticket.ticketNo}</b>
-          </span>
+      <div className="min-h-full xl:grid xl:gap-10 pt-9 pb-6 px-10"
+           style={{ gridTemplateColumns: '1fr 20rem' }}>
+        {/* 왼쪽: 메인 콘텐츠 */}
+        <div className="max-w-[52rem]">
+          {header}
+          {supplementsBlock}
+          {requestInfoBlock}
+          {correctionsBlock}
+
+          {/* xl 미만: 하단 위험 요인 + 접수 버튼 */}
+          <div className="xl:hidden mt-10">
+            <RiskRowsList rows={riskRows} />
+            <BottomBar
+              submitting={submitting}
+              onCancel={onCancel}
+              onSubmit={onSubmit}
+            />
+          </div>
         </div>
 
-        {/* ② 제목 */}
-        <h1 className="text-[2.125rem] leading-[1.3] font-bold tracking-[-0.015em] mt-4 mb-5">
-          {documentTitle(result?.title, result?.category, result?.affectedService)}
-        </h1>
-
-        {/* ③ 핵심 요약 한 줄 */}
-        <HeadlineSummary
-          requestType={result?.requestType}
-          grade={grade}
-          score={score}
-          isHighRisk={isHighRisk}
-          changed={!!changed}
-          prevGrade={prevRisk?.grade ?? null}
-          prevScore={prevRisk?.score ?? null}
-        />
-
-        {/* ④ 보완 질문 */}
-        {(questions.length > 0 || Object.keys(supplementedAnswers).length > 0) && (
-          <Section
-            title={remaining > 0 ? `접수 전에 ${remaining}가지 확인이 필요합니다` : '확인이 필요한 내용'}
-            sub={remaining > 0 ? '아래 질문에 답해주시면 다시 분석합니다' : '모든 보완이 완료되었습니다'}
-          >
-            <div className="space-y-5">
-              {/* 보완된 항목 (완료 블록) */}
-              {Object.entries(supplementedAnswers)
-                .filter(([f]) => !questions.some((q) => q.field === f))
-                .map(([f, a]) => (
-                  <SupplementedBlock key={f} field={f} answer={a} />
-                ))}
-
-              {questions.map(({ field, question }) => (
-                <SupplementItem
-                  key={field}
-                  field={field}
-                  question={question}
-                  answer={supplementedAnswers[field] ?? null}
-                  busy={supplementingField === field}
-                  disabled={supplementingField !== null || submitted}
-                  onSave={(ans) => onSupplement(field, ans)}
-                />
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {/* ⑤ 위험 요인 */}
-        {riskRows.length > 0 && (
-          <Section title="위험 요인" sub="점수 높은 순">
-            <div>
-              {riskRows.map((r, i) => (
-                <div
-                  key={r.factor}
-                  className="grid border-t border-line py-3 text-[1.0625rem] items-baseline"
-                  style={{ gridTemplateColumns: '2.5rem 11.25rem 1fr 3.5rem' }}
-                >
-                  <span className="text-[0.875rem] text-mute">{String(i + 1).padStart(2, '0')}</span>
-                  <span>{label.riskFactor(r.factor)}</span>
-                  <span className="text-mute text-[0.9375rem]">{r.quote ? `"${r.quote}"` : ''}</span>
-                  <span
-                    className="text-right text-[1.0625rem] font-semibold"
-                    style={r.points > 0 ? { color: 'var(--color-risk)' } : undefined}
-                  >
-                    {r.points > 0 ? `+${r.points}` : ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {/* ⑥ 요청 정보 */}
-        <Section title="요청 정보">
-          <div className="grid grid-cols-2 gap-x-14">
-            <div>
-              <Kv k="요청 유형" v={label.requestType(result?.requestType)} />
-              <Kv k="분류" v={label.category(result?.category)} />
-              <Kv k="환경" v={label.environment(result?.environment)} />
-            </div>
-            <div>
-              <Kv k="대상 서비스" v={result?.affectedService ?? '—'} />
-              <Kv k="작업 예정" v={formatRequestedTime(result?.requestedTime)} />
-              <Kv k="요청자" v={requesterName} />
-            </div>
-          </div>
-        </Section>
-
-        {/* ⑦ 자동 보정 (접힘) */}
-        {result?.corrections && result.corrections.length > 0 && (
-          <CollapsibleCorrections corrections={result.corrections} />
-        )}
-
-        {/* ⑧ 푸터 */}
-        <footer className="mt-auto border-t border-line flex justify-between items-center pt-5 pb-6">
-          <span className="text-[0.875rem] text-mute max-w-[28.75rem]">
-            {submitted
-              ? '접수가 완료되어 백오피스에 등록되었습니다.'
-              : '접수하기 전에는 백오피스에 등록되지 않습니다.'}
-          </span>
-          <div className="flex gap-2 items-center">
-            {!submitted && (
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={submitting}
-                className="h-11 px-3 text-[0.9375rem] underline underline-offset-4 disabled:opacity-40"
-              >
-                취소
-              </button>
+        {/* 오른쪽: sticky 사이드바 (xl 이상) */}
+        <aside className="hidden xl:block">
+          <div className="sticky top-6 border border-line p-6">
+            <RiskSummary grade={grade} score={score} prevRisk={prevRisk} />
+            <RiskRowsList rows={riskRows} compact />
+            {totalQ > 0 && (
+              <div className="mt-6 pt-5 border-t border-line text-[0.875rem] text-mute">
+                보완 진행 · <b className="text-ink font-semibold">{completedQ} / {totalQ}</b>
+              </div>
             )}
-            <button
-              type="button"
-              onClick={onSubmit}
-              disabled={submitting || submitted}
-              className="h-11 px-6 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {submitted ? '접수됨' : submitting ? '접수 중…' : '접수하기'}
-            </button>
+            <SidebarButtons
+              submitting={submitting}
+              onCancel={onCancel}
+              onSubmit={onSubmit}
+            />
+            <p className="mt-4 text-[0.75rem] text-mute leading-[1.55]">
+              접수하기 전에는 백오피스에 등록되지 않습니다.
+            </p>
           </div>
-        </footer>
+        </aside>
       </div>
     </article>
   )
 }
 
-function HeadlineSummary({
-  requestType,
-  grade,
-  score,
-  isHighRisk,
-  changed,
-  prevGrade,
-  prevScore,
-}: {
-  requestType?: string | null
-  grade: RiskGrade | null
-  score: number | null
-  isHighRisk: boolean
-  changed: boolean
-  prevGrade: RiskGrade | null
-  prevScore: number | null
-}) {
-  const typeLabel = label.requestType(requestType)
-  const needsApproval = requestType === 'CHANGE' && isHighRisk
-  const prefix = needsApproval ? '승인이 필요한 변경' : typeLabel
+/* ------------------------------------------------------------------ */
+/*  보완 질문                                                           */
+/* ------------------------------------------------------------------ */
 
-  const riskPart =
-    grade && score != null
-      ? ` · 위험도 ${label.riskGrade(grade)} (${score}점)`
-      : ''
+function rowNumber(i: number) {
+  return String(i + 1).padStart(2, '0')
+}
+
+function OpenRow({
+  number, field, question, category, busy, disabled, onSave,
+}: {
+  number: string
+  field: string
+  question: string
+  category: string | null
+  busy: boolean
+  disabled: boolean
+  onSave(ans: string): void
+}) {
+  const [draft, setDraft] = useState('')
+  const canSave = draft.trim().length > 0 && !busy && !disabled
+  const hint = hintFor(field)
+
+  function save() {
+    if (!canSave) return
+    onSave(draft.trim())
+    setDraft('')
+  }
 
   return (
-    <div
-      className="mb-8 text-[1.375rem] font-bold leading-[1.4]"
-      style={isHighRisk ? { color: 'var(--color-risk)' } : undefined}
-    >
-      {prefix}
-      {riskPart}
-      {changed && prevGrade && prevScore != null && grade && score != null && (
-        <div className="mt-1 text-[0.9375rem] font-normal text-mute">
-          {label.riskGrade(prevGrade)} {prevScore}점 → {label.riskGrade(grade)} {score}점
-        </div>
+    <div className="py-4">
+      <div className="flex items-baseline gap-3">
+        <span className="text-[0.8125rem] text-mute font-feature-settings-[tnum] tabular-nums">{number}</span>
+        <strong className="text-[1rem] font-semibold">{label.field(field)}</strong>
+      </div>
+      {hint && <p className="ml-9 mt-1 text-[0.8125rem] text-mute">{hint}</p>}
+      {question && question !== label.field(field) && (
+        <p className="ml-9 mt-1 text-[0.8125rem] text-mute">{question}</p>
+      )}
+      <div className="ml-9 mt-2 flex items-stretch gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={`예) ${placeholderFor(field, category)}`}
+          disabled={disabled || busy}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); save() }
+          }}
+          className="flex-1 border border-line px-3 py-2 text-[0.9375rem] bg-transparent focus:border-ink focus:outline-none placeholder:text-faint disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={!canSave}
+          className={[
+            'h-10 px-4 text-[0.875rem] font-semibold transition-colors',
+            canSave
+              ? 'bg-accent hover:bg-accent-hover text-white'
+              : 'bg-white border border-line text-mute cursor-not-allowed',
+          ].join(' ')}
+        >
+          {busy ? '분석 중…' : '저장'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AnsweredRow({
+  number, field, answer,
+}: { number: string; field: string; answer: string }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="py-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full text-left grid items-baseline gap-3 hover:bg-soft/50"
+        style={{ gridTemplateColumns: '2rem auto auto 1fr' }}
+      >
+        <span className="text-[0.8125rem] text-mute tabular-nums">{number}</span>
+        <strong className="text-[0.9375rem] font-semibold">{label.field(field)}</strong>
+        <span className="text-[0.8125rem] text-mute">✓ 저장됨</span>
+        <span className="text-[0.9375rem] text-ink truncate">{answer}</span>
+      </button>
+      {expanded && (
+        <p className="ml-9 mt-2 text-[0.8125rem] text-mute">
+          수정하려면 질문 전체를 다시 입력해주세요 (대화창에서 요청하면 재분석됩니다).
+        </p>
       )}
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ */
+/*  위험 요인                                                           */
+/* ------------------------------------------------------------------ */
+
+function RiskRowsList({
+  rows, compact = false,
+}: { rows: { factor: string; quote: string | null; points: number }[]; compact?: boolean }) {
+  if (rows.length === 0) return null
+  const sum = rows.reduce((a, b) => a + b.points, 0)
+  return (
+    <section className={compact ? 'mt-5' : 'mt-2'}>
+      {!compact && <h3 className="text-[0.9375rem] font-semibold mb-3">위험 요인</h3>}
+      <div className="border-t border-line">
+        {rows.map((r) => (
+          <div
+            key={r.factor}
+            className={`grid border-b border-line ${compact ? 'py-2' : 'py-3'} text-[0.9375rem] items-baseline`}
+            style={{ gridTemplateColumns: '1fr auto' }}
+          >
+            <span>{label.riskFactor(r.factor)}</span>
+            <span className="font-semibold" style={{ color: 'var(--color-risk)' }}>
+              +{r.points}
+            </span>
+          </div>
+        ))}
+        <div className="grid py-3 text-[0.9375rem] items-baseline"
+             style={{ gridTemplateColumns: '1fr auto' }}>
+          <span className="text-mute">합계</span>
+          <b className="font-bold text-[1rem]" style={{ color: 'var(--color-risk)' }}>{sum}</b>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  사이드바                                                            */
+/* ------------------------------------------------------------------ */
+
+function RiskSummary({
+  grade, score, prevRisk,
+}: {
+  grade: RiskGrade | null
+  score: number | null
+  prevRisk: { grade: RiskGrade | null; score: number | null } | null
+}) {
+  const changed = prevRisk && (prevRisk.grade !== grade || prevRisk.score !== score)
+  return (
+    <div>
+      <p className="text-[0.75rem] text-mute">위험도</p>
+      <div className="mt-2 flex items-baseline gap-2">
+        <b className="text-[2rem] font-bold leading-none" style={{ color: 'var(--color-risk)' }}>
+          {score ?? '—'}
+        </b>
+        <span className="text-[1rem] text-mute">점</span>
+        {grade && (
+          <span className="ml-auto text-[0.9375rem] font-semibold" style={{ color: 'var(--color-risk)' }}>
+            {label.riskGrade(grade)}
+          </span>
+        )}
+      </div>
+      {changed && prevRisk?.score != null && (
+        <p className="mt-1 text-[0.75rem] text-mute">이전 {prevRisk.score}점 → 지금 {score}점</p>
+      )}
+    </div>
+  )
+}
+
+function SidebarButtons({
+  submitting, onCancel, onSubmit,
+}: { submitting: boolean; onCancel(): void; onSubmit(): void }) {
+  return (
+    <div className="mt-6 pt-5 border-t border-line flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={submitting}
+        className="h-11 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {submitting ? '접수 중…' : '접수하기'}
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={submitting}
+        className="h-10 text-[0.875rem] underline underline-offset-4 disabled:opacity-40"
+      >
+        취소
+      </button>
+    </div>
+  )
+}
+
+function BottomBar({
+  submitting, onCancel, onSubmit,
+}: { submitting: boolean; onCancel(): void; onSubmit(): void }) {
+  return (
+    <footer className="mt-10 border-t border-line flex justify-between items-center pt-5 pb-6">
+      <span className="text-[0.875rem] text-mute max-w-[28.75rem]">
+        접수하기 전에는 백오피스에 등록되지 않습니다.
+      </span>
+      <div className="flex gap-2 items-center">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={submitting}
+          className="h-11 px-3 text-[0.9375rem] underline underline-offset-4 disabled:opacity-40"
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={submitting}
+          className="h-11 px-6 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {submitting ? '접수 중…' : '접수하기'}
+        </button>
+      </div>
+    </footer>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  접수 완료 화면                                                       */
+/* ------------------------------------------------------------------ */
+
+function SubmittedState({
+  ticket, statusLabel, score, grade, openQuestions, onSendChat, onNewRequest,
+}: {
+  ticket: AssistantCardCreate['ticket']
+  statusLabel: string
+  score: number | null
+  grade: RiskGrade | null
+  openQuestions: Array<{ field: string; question: string }>
+  onSendChat?: (text: string) => void
+  onNewRequest?: () => void
+}) {
+  const sla = (ticket as unknown as { sla?: { resolutionDueAt?: string | null } }).sla
+  const resolutionDueAt = sla?.resolutionDueAt ?? null
+  const submittedAt =
+    (ticket as unknown as { submittedAt?: string | null }).submittedAt
+    ?? (ticket as unknown as { createdAt?: string | null }).createdAt
+    ?? null
+
+  return (
+    <article className="h-full overflow-y-auto">
+      <div className="min-h-full px-12 pt-16 pb-8 max-w-[40rem] mx-auto">
+        <div className="text-[0.875rem] text-mute">접수 완료</div>
+        <h1 className="mt-3 text-[2rem] font-bold tracking-[-0.015em]">
+          요청이 접수되었습니다
+        </h1>
+        <p className="mt-3 text-[0.9375rem] text-mute leading-[1.6]">
+          백오피스에 등록되었고 지금부터 SLA 가 시작됩니다.
+          <br />
+          처리 현황은 대화창에서 "내 요청 보여줘" 로 확인할 수 있어요.
+        </p>
+
+        <dl className="mt-9 border-t border-line">
+          <RowKV k="요청 번호" v={ticket.ticketNo} />
+          <RowKV k="상태" v={statusLabel} />
+          <RowKV k="접수 시각" v={formatDateTime(submittedAt)} />
+          <RowKV k="SLA 마감" v={formatDateTime(resolutionDueAt)} />
+          {score != null && grade != null && (
+            <RowKV k="위험도" v={`${label.riskGrade(grade)} · ${score}점`} valueColor="risk" />
+          )}
+          {openQuestions.length > 0 && (
+            <RowKV
+              k="남은 보완"
+              v={openQuestions.map((q) => label.field(q.field)).join(', ')}
+            />
+          )}
+        </dl>
+
+        <div className="mt-10 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onSendChat?.('내 요청 보여줘')}
+            disabled={!onSendChat}
+            className="h-11 px-5 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40"
+          >
+            내 요청 보기
+          </button>
+          <button
+            type="button"
+            onClick={() => onNewRequest?.()}
+            disabled={!onNewRequest}
+            className="h-11 px-5 border border-line text-[0.9375rem] disabled:opacity-40"
+          >
+            새 요청 작성
+          </button>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function RowKV({
+  k, v, valueColor,
+}: { k: string; v: string; valueColor?: 'risk' }) {
+  return (
+    <div className="grid border-b border-line py-3 text-[1rem]"
+         style={{ gridTemplateColumns: '9rem 1fr' }}>
+      <span className="text-[0.875rem] text-mute">{k}</span>
+      <span style={valueColor === 'risk' ? { color: 'var(--color-risk)' } : undefined}
+            className={valueColor === 'risk' ? 'font-semibold' : undefined}>
+        {v}
+      </span>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  보조                                                               */
+/* ------------------------------------------------------------------ */
 
 function CollapsibleCorrections({ corrections }: { corrections: string[] }) {
   const [open, setOpen] = useState(false)
@@ -270,104 +544,15 @@ function CollapsibleCorrections({ corrections }: { corrections: string[] }) {
   )
 }
 
-function SupplementItem({
-  field,
-  question,
-  answer,
-  busy,
-  disabled,
-  onSave,
-}: {
-  field: string
-  question: string
-  answer: string | null
-  busy: boolean
-  disabled: boolean
-  onSave(ans: string): void
-}) {
-  const [draft, setDraft] = useState('')
-
-  if (answer) {
-    return <SupplementedBlock field={field} answer={answer} />
-  }
-
-  function save() {
-    const t = draft.trim()
-    if (!t || busy) return
-    onSave(t)
-    setDraft('')
-  }
-
-  return (
-    <div className="border-t border-line pt-3">
-      <p className="text-[1.0625rem]">{question}</p>
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        placeholder={`예) ${placeholderFor(field)}`}
-        rows={2}
-        disabled={disabled || busy}
-        className="w-full mt-3 py-2 text-[1.0625rem] resize-none bg-transparent focus:outline-none placeholder:text-mute disabled:opacity-50"
-        style={{ borderBottom: '0.0625rem solid var(--color-ink)' }}
-      />
-      <div className="mt-3 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={disabled || busy || !draft.trim()}
-          className="h-10 px-4 bg-accent hover:bg-accent-hover transition-colors text-white text-[0.9375rem] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {busy ? '다시 분석하고 있습니다…' : '답변 저장'}
-        </button>
-        {busy && <span className="text-[0.875rem] text-mute">잠시만 기다려 주세요</span>}
-      </div>
-    </div>
-  )
-}
-
-function SupplementedBlock({ field, answer }: { field: string; answer: string }) {
-  return (
-    <div className="border-t border-line pt-3">
-      <p className="text-[0.9375rem] text-mute">{label.field(field)}</p>
-      <p className="text-[1.0625rem] mt-1">
-        <span className="text-mute mr-1.5">보완 완료 ·</span>
-        {answer}
-      </p>
-    </div>
-  )
-}
-
 function Kv({ k, v }: { k: string; v: string }) {
   return (
     <div
-      className="grid border-t border-line py-3 text-[1.0625rem]"
+      className="grid border-t border-line py-3 text-[1rem]"
       style={{ gridTemplateColumns: '7.5rem 1fr' }}
     >
-      <span className="text-[0.9375rem] text-mute">{k}</span>
+      <span className="text-[0.875rem] text-mute">{k}</span>
       <span>{v}</span>
     </div>
-  )
-}
-
-function Section({
-  title,
-  sub,
-  children,
-}: {
-  title: string
-  sub?: string
-  children: React.ReactNode
-}) {
-  return (
-    <section className="mt-9">
-      <h3 className="text-[0.9375rem] font-semibold mb-3">
-        {title}
-        {sub && (
-          <small className="block font-normal text-mute text-[0.875rem] mt-0.5">{sub}</small>
-        )}
-      </h3>
-      {children}
-    </section>
   )
 }
 
@@ -376,7 +561,6 @@ function documentTitle(
   category: string | undefined | null,
   service: string | null | undefined,
 ): string {
-  // Validator 가 항상 title 을 채워주지만, 혹시 비어 있거나 과거 레코드면 폴백.
   const t = aiTitle?.trim()
   if (t) return t
   const cat = label.category(category)
@@ -387,19 +571,62 @@ function documentTitle(
   return '요청서'
 }
 
-function placeholderFor(key: string): string {
+function placeholderFor(key: string, category?: string | null): string {
+  if (key === 'rollbackPlan') {
+    switch (category) {
+      case 'FIREWALL': return '추가한 허용 규칙 즉시 삭제, 작업 전 설정 백업'
+      case 'NETWORK': return '변경한 라우팅 즉시 원복, 작업 전 설정 백업'
+      case 'DATABASE_SCHEMA': return '추가한 컬럼 삭제 스크립트, 작업 전 테이블 백업'
+      case 'DATABASE_PERMISSION': return '부여한 권한 즉시 회수'
+      case 'SERVER': return '변경 전 설정 백업 후 원복'
+      default: return '변경 전 상태로 되돌릴 절차를 적어주세요'
+    }
+  }
+  if (key === 'testPlan') {
+    switch (category) {
+      case 'FIREWALL':
+      case 'NETWORK': return '스테이징에서 연결 테스트 완료'
+      case 'DATABASE_SCHEMA':
+      case 'DATABASE_PERMISSION': return '스테이징에서 동일 쿼리 검증, 영향 사용자 수 확인'
+      default: return '테스트 환경에서 검증 완료'
+    }
+  }
   const examples: Record<string, string> = {
-    rollbackPlan: '추가한 컬럼 삭제 스크립트, 작업 전 테이블 백업',
-    testPlan: '스테이징에서 동일 쿼리 검증, 영향 사용자 수 확인',
-    scheduledTime: '오늘 23:00',
+    scheduledTime: '2026-10-16 23:00',
     sourceIp: '10.0.1.23',
     destinationIp: '10.0.2.11',
     port: '3306',
     protocol: 'TCP',
     reason: '월말 정산 데이터 집계용',
     errorMessage: '"접속 시 500 오류"',
-    affectedService: '학생 포털',
+    affectedService: '주문 시스템',
     environment: '운영',
   }
   return examples[key] ?? '간단히 설명해 주세요'
+}
+
+function hintFor(field: string): string | null {
+  // 짧은 보조 — 필요한 필드만.
+  const hints: Record<string, string> = {
+    sourceIp: '예: 10.0.x.x',
+    destinationIp: '예: 10.0.x.x',
+    scheduledTime: '날짜 + 시각',
+    port: '숫자만',
+  }
+  return hints[field] ?? null
+}
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso)
+    const Y = d.getFullYear()
+    const M = String(d.getMonth() + 1).padStart(2, '0')
+    const D = String(d.getDate()).padStart(2, '0')
+    const h = String(d.getHours()).padStart(2, '0')
+    const m = String(d.getMinutes()).padStart(2, '0')
+    return `${Y}-${M}-${D} ${h}:${m}`
+  } catch {
+    return iso
+  }
 }
