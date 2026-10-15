@@ -25,10 +25,10 @@ const sources = {
   scene03: { file: 'scene03.mp4' },
   scene_hero: { file: 'scene_hero.mp4' },
   chapter1: { file: 'chapter1.mp4' },
-  scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 24 },
+  scene04: { file: 'scene040506.webm', trimStart: 0,    trimDur: 27 },
   chapter2: { file: 'chapter2.mp4' },
-  scene05: { file: 'scene040506.webm', trimStart: 24,   trimDur: 13 },
-  scene06: { file: 'scene040506.webm', trimStart: 37,   trimDur: 18 },
+  scene05: { file: 'scene040506.webm', trimStart: 27,   trimDur: 14 },
+  scene06: { file: 'scene040506.webm', trimStart: 41,   trimDur: 22 },
   chapter3: { file: 'chapter3.mp4' },
   scene07: { file: 'scene07.webm' },
   chapter4: { file: 'chapter4.mp4' },
@@ -165,17 +165,21 @@ function makeClip(s) {
 
   let vFilter;
   if (s.id === 'scene04') {
-    // 녹화 timeline (webm 실제): 0~10s 로그인+입력, 10~22s "작성 중"(4x fast), 22~24s 요청서+overlay(slow)
-    // target=15s 로 단축: A(8s) + B(2.3s · 14s→2.3s) + C(4.7s · 2s→4.7s, 2.35x slow)
-    const aLen = 8;
-    const bPts = 2.3 / 14;
-    const cSrcLen = 2;
-    const cTarget = Math.max(2, target - aLen - 2.3);
+    // 녹화 timeline (webm): 0~9.42s 로그인+입력, 9.42~19.09s "작성 중"(fast), 19.09~27s 요청서+overlay
+    // target=20s 분해: A(9.42s 자연) + B(2.3s · 9.67s→2.3s) + C(T-11.72s · 7.91s→cTarget)
+    const aLen = 9.42;
+    const bSrcLen = 9.67;        // 9.42 → 19.09
+    const bLen = 2.3;
+    const bPts = bLen / bSrcLen;
+    const cSrcStart = 19.09;
+    const cSrcEnd = 27;
+    const cSrcLen = cSrcEnd - cSrcStart;
+    const cTarget = Math.max(2, target - aLen - bLen);
     const cPts = cTarget / cSrcLen;
     vFilter =
-      `[0:v]trim=0:8,setpts=PTS-STARTPTS[a04];` +
-      `[0:v]trim=8:22,setpts=(PTS-STARTPTS)*${bPts.toFixed(4)}[b04];` +
-      `[0:v]trim=22:24,setpts=(PTS-STARTPTS)*${cPts.toFixed(4)}[c04];` +
+      `[0:v]trim=0:${aLen.toFixed(2)},setpts=PTS-STARTPTS[a04];` +
+      `[0:v]trim=${aLen.toFixed(2)}:${cSrcStart.toFixed(2)},setpts=(PTS-STARTPTS)*${bPts.toFixed(4)}[b04];` +
+      `[0:v]trim=${cSrcStart.toFixed(2)}:${cSrcEnd.toFixed(2)},setpts=(PTS-STARTPTS)*${cPts.toFixed(4)}[c04];` +
       `[a04][b04][c04]concat=n=3:v=1[cat04];` +
       `[cat04]${commonTail}${zoomTail}[v]`;
   } else if (src.trimDur !== undefined) {

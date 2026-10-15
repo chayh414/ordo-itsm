@@ -64,9 +64,9 @@ try {
   await page.keyboard.press('Enter');
   mark('submit');
 
-  // 요청서 생성 대기 (오른쪽에 "매우 높음|높음|점" 등장까지)
+  // 요청서 생성 대기 — 새 UI 는 사이드바에 큰 숫자 점수 노출
   await page
-    .locator('text=/매우 높음|9점|초안|작성|접수하기/')
+    .locator('text=/매우 높음|9점|요청서 초안|접수하기/')
     .first()
     .waitFor({ state: 'visible', timeout: 60000 });
   await page.waitForTimeout(1500);
@@ -76,40 +76,44 @@ try {
   await page.waitForTimeout(2000);
 
   // 보조 그래픽 삽입: +3+3+2+1=9 합산 (6초 유지)
-  await injectOverlay(page, loadMotionAsset('grafx-score.html'), { duration: 6, right: 24, top: 110 });
+  // 1440 뷰포트 기준 사이드바는 x≈1120~1440. 사이드바 바로 왼쪽에 띄움.
+  await injectOverlay(page, loadMotionAsset('grafx-score.html'), { duration: 6, right: 360, top: 110 });
   mark('overlay_score');
   await page.waitForTimeout(6500);
 
   // ───── SCENE 05 ─────
-  // 보완 질문 textarea: placeholder가 "예) ..." 로 시작
-  const supInputSel = 'textarea[placeholder^="예)"]';
-  const supInput = page.locator(supInputSel).first();
-  await supInput.waitFor({ state: 'visible', timeout: 10000 });
-  await supInput.scrollIntoViewIfNeeded();
+  // 새 UI: OpenRow 는 <input type="text"> + "저장" 버튼. "롤백 절차" row 지목.
+  const row = page.locator('div.py-4').filter({ has: page.locator('strong:has-text("롤백 절차")') }).first();
+  await row.waitFor({ state: 'visible', timeout: 10000 });
+  await row.scrollIntoViewIfNeeded();
   await page.waitForTimeout(400);
+  const supInput = row.locator('input[type="text"]').first();
   await supInput.click();
-  await typeHuman(page, supInputSel, SUPPLEMENT);
+  // typeHuman 는 selector 를 전역에서 받아야 하므로 row 안의 input 을 전역 셀렉터로 노출
+  await typeHuman(page, 'div.py-4:has(strong:has-text("롤백 절차")) input[type="text"]', SUPPLEMENT);
   mark('supplement_typed');
   await page.waitForTimeout(400);
 
-  // "답변 저장" 버튼
-  const saveBtn = page.locator('button', { hasText: '답변 저장' }).first();
+  // 롤백 절차 row 안의 "저장" 버튼
+  const saveBtn = row.locator('button:has-text("저장")').first();
   await saveBtn.click();
   mark('supplement_saved');
 
   // 7점으로 재평가 대기
   await page.waitForTimeout(4000);
-  // 9→7 overlay
-  await injectOverlay(page, loadMotionAsset('grafx-score-reduce.html'), { duration: 5, right: 24, top: 180 });
+  // 9→7 overlay — 사이드바 점수 영역 바로 왼쪽
+  await injectOverlay(page, loadMotionAsset('grafx-score-reduce.html'), { duration: 5, right: 360, top: 180 });
   mark('overlay_97');
   await page.waitForTimeout(5500);
 
-  // "접수하기" 버튼
-  const submitBtn = page.locator('button', { hasText: /접수하기/ }).first();
+  // "접수하기" 버튼 — 사이드바에 있음. visible 로 좁혀 BottomBar(hidden) 와 분리.
+  const submitBtn = page.locator('button:has-text("접수하기")').locator('visible=true').first();
   await submitBtn.scrollIntoViewIfNeeded();
   await page.waitForTimeout(400);
   await submitBtn.click();
   mark('submit_click');
+  // 접수 완료 화면이 뜨도록 대기 (SubmittedState)
+  await page.locator('h1:has-text("요청이 접수되었습니다")').waitFor({ timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(2500);
 
   // ───── SCENE 06 ─────
