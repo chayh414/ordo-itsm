@@ -40,6 +40,13 @@ const NAME_BAR_SCRIPT = (label, isEmpty) => `
   bar.textContent = ${JSON.stringify(label)};
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:52px;background:#111;color:#fff;font-size:22px;font-weight:700;display:flex;align-items:center;justify-content:flex-end;padding-right:40px;z-index:2147483645;font-family:"Malgun Gothic",sans-serif;letter-spacing:-0.01em;';
   document.body.appendChild(bar);
+  // freeze 방지: name-bar 좌측에 subtle 진행선 (continuous 애니메이션으로 pixel 변화 유도)
+  const line = document.createElement('div');
+  line.style.cssText = 'position:fixed;top:50px;left:0;height:2px;background:#444;z-index:2147483646;animation:ordoline 2.4s linear infinite;';
+  const style = document.createElement('style');
+  style.textContent = '@keyframes ordoline { 0% { width: 0 } 50% { width: 100% } 100% { width: 0 } }';
+  document.head.appendChild(style);
+  document.body.appendChild(line);
   ${isEmpty ? `
   const msg = document.createElement('div');
   msg.innerHTML = '<div style="font-size:19px;color:#6F6F6F;letter-spacing:-0.01em;margin-bottom:12px;">알림 없음</div><div style="font-size:14px;color:#A6A6A6;">다른 고객사</div>';
@@ -104,11 +111,24 @@ try {
   });
   mark('incident_after');
 
-  // 토스트 등장 유지 (장애 알림 7s)
+  // 토스트 등장 유지 (장애 알림 7s) — freeze 방지: 큰 거리 이동 + mousedown toggle 로 커서 크기 변화
+  async function wiggle(p, duration) {
+    const end = Date.now() + duration;
+    const points = [[1200, 220], [900, 700], [1300, 300], [700, 500], [1100, 750], [1250, 180]];
+    let i = 0;
+    while (Date.now() < end) {
+      const [x, y] = points[i % points.length];
+      await p.mouse.move(x, y, { steps: 8 });
+      // 커서 크기 토글 (overlay 는 mousedown 시 22px, mouseup 시 14px — 미세 변화 유도)
+      if (i % 2 === 0) { await p.mouse.down(); await p.waitForTimeout(80); await p.mouse.up(); }
+      await p.waitForTimeout(380);
+      i++;
+    }
+  }
   await Promise.all([
-    op.page.waitForTimeout(7000),
-    reqA.page.waitForTimeout(7000),
-    reqB.page.waitForTimeout(7000),
+    wiggle(op.page, 7000),
+    wiggle(reqA.page, 7000),
+    wiggle(reqB.page, 7000),
   ]);
   mark('incident_toast_shown');
 
@@ -123,11 +143,11 @@ try {
   }
   mark('sla_near_after');
 
-  // SLA 임박 토스트 카운트다운 유지 (6s · 더 늘리면 freeze)
+  // SLA 임박 토스트 카운트다운 유지 (6s) — freeze 방지: wiggle 재사용
   await Promise.all([
-    op.page.waitForTimeout(6000),
-    reqA.page.waitForTimeout(6000),
-    reqB.page.waitForTimeout(6000),
+    wiggle(op.page, 6000),
+    wiggle(reqA.page, 6000),
+    wiggle(reqB.page, 6000),
   ]);
   mark('end');
 

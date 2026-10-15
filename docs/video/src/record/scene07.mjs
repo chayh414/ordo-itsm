@@ -49,7 +49,14 @@ try {
   await typeHuman(page, CHAT, 'B은행 요청 중에 보완 대기 중인 거 보여줘');
   await page.keyboard.press('Enter');
   mark('bbank_query');
-  await page.waitForTimeout(6500);
+  // 응답 대기 중 freeze 방지: 커서를 움직여 "조회 중" 느낌 유지
+  await page.waitForTimeout(1500);
+  await page.mouse.move(900, 400);
+  await page.waitForTimeout(1200);
+  await page.mouse.move(1100, 500);
+  await page.waitForTimeout(1200);
+  await page.mouse.move(800, 450);
+  await page.waitForTimeout(2600);
 
   // 백오피스 메뉴 클릭
   const backofficeNav = page.locator('a, button', { hasText: '백오피스' }).first();
@@ -65,17 +72,22 @@ try {
   mark('row_0001_click');
   await page.waitForTimeout(2000);
 
-  // 상세 영역 하단 '위험 평가 이력' 영역까지 스크롤
+  // 상세 영역 하단 '위험 평가 이력' 영역까지 스크롤 (freeze 방지: wait 짧게)
   const rightPanel = page.locator('main > section').nth(1);
   await rightPanel.hover();
   for (let y = 0; y < 2600; y += 180) {
     await page.mouse.wheel(0, 180);
-    await page.waitForTimeout(450);
+    await page.waitForTimeout(360);
   }
-  mark('scroll_done');
-  await page.waitForTimeout(1500);
-  mark('scroll_done');
-  await page.waitForTimeout(2000);
+  mark('scroll_down_done');
+  // freeze 방지: 긴 wait 대신 위로 되돌아가며 상단 섹션 다시 보여주기 (움직임 유지)
+  await page.waitForTimeout(400);
+  for (let y = 0; y < 1200; y += 160) {
+    await page.mouse.wheel(0, -160);
+    await page.waitForTimeout(300);
+  }
+  mark('scroll_up_done');
+  await page.waitForTimeout(500);
   mark('end');
 } catch (err) {
   console.error('녹화 중 오류:', err);

@@ -76,8 +76,13 @@ try {
     await dueLabel.scrollIntoViewIfNeeded();
   } catch {}
 
-  // 상세 유지 (6초)
-  await page.waitForTimeout(6000);
+  // 상세 유지 (6초) — freeze 방지: 섹션 사이를 작은 스크롤로 느리게 이동
+  await page.waitForTimeout(800);
+  for (let i = 0; i < 10; i++) {
+    await page.mouse.wheel(0, i % 2 === 0 ? 80 : -40);
+    await page.waitForTimeout(380);
+  }
+  await page.waitForTimeout(500);
   mark('end');
 } catch (err) {
   console.error('녹화 중 오류:', err);
